@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nl-energy-warehouse"
+version = "0.1.0"
+description = "Dutch electricity price and weather warehouse: ENTSO-E + KNMI, dbt, DuckDB"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "pandas>=2.0",
+    "duckdb>=0.10",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dbt = ["dbt-duckdb>=1.7"]
+
+[tool.setuptools]
+packages = ["ingest"]

@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[dbt]"
+
+      - name: Load sample data
+        run: python -m ingest.cli load --sample
+
+      - name: dbt build
+        run: dbt build --project-dir dbt --profiles-dir dbt
+        env:
+          DUCKDB_PATH: warehouse/energy.duckdb

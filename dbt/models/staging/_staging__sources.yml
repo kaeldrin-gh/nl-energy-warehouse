@@ -1,0 +1,13 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    description: "Tables written by the ingest package. Natural-keyed, revision-aware upserts."
+    tables:
+      - name: entsoe_prices
+        description: "ENTSO-E day-ahead prices, NL bidding zone. hour_utc is the delivery hour start (UTC)."
+      - name: energycharts_prices
+        description: "energy-charts.info day-ahead prices for the same zone. Independent republish of ENTSO-E data, used for cross-checking."
+      - name: knmi_weather
+        description: "KNMI hourly station observations (De Bilt). interval_end_local is the hour-ending label in local wall-clock time, as published."

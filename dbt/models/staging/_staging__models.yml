@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: stg_entsoe__day_ahead_prices
+    description: "Deduplicated ENTSO-E prices, one row per delivery hour, latest fetched_at wins."
+    columns:
+      - name: hour_utc
+        tests: [unique, not_null]
+      - name: price_eur_mwh
+        tests: [not_null]
+
+  - name: stg_energycharts__day_ahead_prices
+    description: "Deduplicated energy-charts.info prices, one row per delivery hour."
+    columns:
+      - name: hour_utc
+        tests: [unique, not_null]
+      - name: price_eur_mwh
+        tests: [not_null]
+
+  - name: stg_knmi__hourly_weather
+    description: "KNMI observations converted from local hour-ending labels to UTC interval start/end. Ambiguous DST labels resolve deterministically to the latest fetched_at row."
+    columns:
+      - name: interval_start_utc
+        tests: [unique, not_null]
+      - name: temp_c
+        tests: [not_null]
