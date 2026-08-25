@@ -1,0 +1,18 @@
+version: 2
+
+models:
+  - name: fct_hourly_price_weather
+    description: "One row per delivery hour: primary price, cross-source price, and weather. Grain: hour_utc."
+    columns:
+      - name: hour_utc
+        tests: [unique, not_null]
+      - name: price_eur_mwh
+        tests: [not_null]
+      - name: is_negative_price
+        tests: [not_null]
+
+  - name: mart_daily_summary
+    description: "Local-day aggregates for BI consumption. Grain: local_date (Europe/Amsterdam)."
+    columns:
+      - name: local_date
+        tests: [unique, not_null]

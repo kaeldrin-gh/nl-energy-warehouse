@@ -1,0 +1,16 @@
+name: nl_energy
+version: 0.1.0
+config-version: 2
+profile: nl_energy
+
+model-paths: ["models"]
+test-paths: ["tests"]
+
+models:
+  nl_energy:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: table
