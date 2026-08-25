@@ -8,6 +8,7 @@ dbt/target/
 dbt/logs/
 dbt/dbt_packages/
 dbt/.user.yml
+exports/
 *.duckdb
 *.duckdb.wal
 .DS_Store

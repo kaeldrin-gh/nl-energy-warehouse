@@ -1,5 +1,6 @@
 import argparse
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from . import db, energycharts, entsoe, knmi, sample
 from .config import settings
@@ -54,6 +55,18 @@ def load_live(sources: list[str]) -> None:
     conn.close()
 
 
+def export_marts() -> None:
+    conn = db.connect()
+    out = settings.root / "exports"
+    out.mkdir(exist_ok=True)
+    for table in ("fct_hourly_price_weather", "mart_daily_summary"):
+        df = conn.execute(f"select * from main.{table}").fetchdf()
+        path = out / f"{table}.parquet"
+        df.to_parquet(path, index=False)
+        print(f"exported {path.name} ({len(df)} rows)")
+    conn.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Load raw data into the DuckDB warehouse")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -64,6 +77,8 @@ def main() -> None:
     load.add_argument("--sources", default="entsoe,energycharts,knmi",
                       help="comma-separated subset of entsoe,energycharts,knmi")
 
+    sub.add_parser("export", help="export mart tables to exports/ as Parquet for BI tools")
+
     args = parser.parse_args()
 
     if args.command == "load":
@@ -71,6 +86,8 @@ def main() -> None:
             load_sample()
         else:
             load_live([s.strip() for s in args.sources.split(",") if s.strip()])
+    elif args.command == "export":
+        export_marts()
 
 
 if __name__ == "__main__":

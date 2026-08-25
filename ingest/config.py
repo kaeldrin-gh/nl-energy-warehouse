@@ -10,6 +10,7 @@ load_dotenv(ROOT / ".env")
 
 @dataclass(frozen=True)
 class Settings:
+    root: Path = field(default_factory=lambda: ROOT)
     duckdb_path: Path = field(default_factory=lambda: ROOT / "warehouse" / "energy.duckdb")
     entsoe_token: str | None = os.getenv("ENTSOE_TOKEN")
     knmi_token: str | None = os.getenv("KNMI_TOKEN")
