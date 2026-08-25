@@ -39,7 +39,8 @@ def parse_uurgeg_zip(content: bytes) -> pd.DataFrame:
 
 def parse_uurgeg_text(text: str) -> pd.DataFrame:
     lines = text.splitlines()
-    header_idx = max(i for i, line in enumerate(lines) if line.startswith("#"))
+    header_idx = max(i for i, line in enumerate(lines)
+                     if line.startswith("#") and "STN" in line)
     header = [c.strip() for c in lines[header_idx].lstrip("# ").split(",")]
     data = "\n".join(lines[header_idx + 1:])
     df = pd.read_csv(io.StringIO(data), names=header, na_values=["", " "], skipinitialspace=True)

@@ -41,9 +41,10 @@ CREATE TABLE IF NOT EXISTS raw.ingest_log (
 """
 
 
-def connect() -> duckdb.DuckDBPyConnection:
-    settings.duckdb_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = duckdb.connect(str(settings.duckdb_path))
+def connect(path=None) -> duckdb.DuckDBPyConnection:
+    path = Path(path) if path else settings.duckdb_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = duckdb.connect(str(path))
     conn.execute("SET TimeZone='UTC'")
     conn.execute(SCHEMA_SQL)
     return conn
