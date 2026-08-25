@@ -1,0 +1,14 @@
+# BRON: Koninklijk Nederlands Meteorologisch Instituut (KNMI)
+# Opmerking: door continuiteit te waarborgen kunnen stations gecombineerd zijn.
+#
+# YYYYMMDD = datum (jjjjmmdd)
+# H        = tijd (uur, lokale tijd), uur H beslaat de periode tot H:00
+# T        = temperatuur (in 0.1 graden Celsius)
+# FH       = uurlijns windsnelheid (in 0.1 m/s)
+# Q        = globale straling (in J/cm2), -1 betekent < 0.05 J/cm2
+#
+# STN,YYYYMMDD,H, T, FH,  Q
+260,20260101,24, 50,100, 20
+260,20260102, 1, 48, 90, 10
+260,20260102, 2, 45, 80, -1
+260,20260102, 3,  ,   ,  0

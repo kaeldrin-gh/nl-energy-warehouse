@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dbt = ["dbt-duckdb>=1.7"]
+test = ["pytest>=8.0"]
 
 [tool.setuptools]
 packages = ["ingest"]

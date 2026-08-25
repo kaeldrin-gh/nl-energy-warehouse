@@ -49,6 +49,18 @@ python -m ingest.cli load
 
 Everything runs locally on DuckDB. A Snowflake profile stub is included in `dbt/profiles.yml`; the models are plain SQL and port directly.
 
+## Testing
+
+```bash
+pip install -e ".[dbt,test]"
+python -m pytest tests -v
+```
+
+- **Parser tests** against committed ENTSO-E XML and KNMI uurgeg fixtures (hourly and 15-minute resolutions, negative prices, missing values, hour-24 labels) — no network needed
+- **Ingestion tests**: upsert idempotency (load twice, same row count) and revision overwrite (newer `fetched_at` wins)
+- **Determinism tests**: the sample generator produces byte-identical data for the same seed
+- **DST integration tests**: a full dbt build runs against synthetic spring (missing local hour) and autumn (overlapping label) transition days, asserting staging produces no duplicate hours
+
 ## What this demonstrates
 
 - Idempotent, revision-aware ingestion against a source that rewrites history

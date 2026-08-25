@@ -17,7 +17,10 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -e ".[dbt]"
+        run: pip install -e ".[dbt,test]"
+
+      - name: Run ingest tests
+        run: python -m pytest tests -v
 
       - name: Load sample data
         run: python -m ingest.cli load --sample

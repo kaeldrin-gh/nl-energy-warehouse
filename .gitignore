@@ -8,6 +8,7 @@ dbt/target/
 dbt/logs/
 dbt/dbt_packages/
 dbt/.user.yml
+.pytest_cache/
 exports/
 *.duckdb
 *.duckdb.wal
