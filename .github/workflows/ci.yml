@@ -49,6 +49,8 @@ jobs:
           DUCKDB_PATH: warehouse/energy.duckdb
 
       - name: dbt source freshness
-        run: dbt source freshness --project-dir dbt --profiles-dir dbt
+        # CI runs on the sample warehouse: only the price sources are sample-
+        # loaded, so freshness for live-only sources is checked in ingest.yml.
+        run: dbt source freshness --select source:raw.entsoe_prices source:raw.energycharts_prices --project-dir dbt --profiles-dir dbt
         env:
           DUCKDB_PATH: warehouse/energy.duckdb
