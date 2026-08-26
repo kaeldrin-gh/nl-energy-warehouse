@@ -7,8 +7,9 @@ def test_generation_is_deterministic():
     a = sample.generate(30)
     b = sample.generate(30)
     for table in a:
-        pd.testing.assert_frame_equal(a[table].drop(columns=["fetched_at"]),
-                                      b[table].drop(columns=["fetched_at"]))
+        pd.testing.assert_frame_equal(
+            a[table].drop(columns=["fetched_at"]), b[table].drop(columns=["fetched_at"])
+        )
 
 
 def test_hourly_grain_and_alignment():
@@ -31,7 +32,8 @@ def test_negative_prices_present():
 
 def test_cross_source_tracks_primary():
     frames = sample.generate(30)
-    merged = frames["entsoe_prices"].merge(frames["energycharts_prices"], on="hour_utc",
-                                           suffixes=("", "_cross"))
+    merged = frames["entsoe_prices"].merge(
+        frames["energycharts_prices"], on="hour_utc", suffixes=("", "_cross")
+    )
     diff = (merged["price_eur_mwh"] - merged["price_eur_mwh_cross"]).abs()
     assert diff.max() < 2.0

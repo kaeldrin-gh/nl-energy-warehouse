@@ -1,0 +1,56 @@
+version: 2
+
+semantic_models:
+  - name: hourly_energy
+    description: "Hourly day-ahead price and weather facts for the NL bidding zone."
+    model: "ref('fct_hourly_price_weather')"
+    defaults:
+      agg_time_dimension: delivery_hour
+    entities:
+      - name: delivery_hour_utc
+        type: primary
+        expr: hour_utc
+    measures:
+      - name: average_price
+        description: "Mean day-ahead price across the selected hours."
+        agg: average
+        expr: price_eur_mwh
+      - name: negative_hours
+        description: "Count of hours with a negative day-ahead price."
+        agg: sum
+        expr: "case when is_negative_price then 1 else 0 end"
+      - name: radiation_total
+        description: "Sum of global radiation (J/m2)."
+        agg: sum
+        expr: radiation_jm2
+    dimensions:
+      - name: delivery_hour
+        type: time
+        type_params:
+          time_granularity: hour
+        expr: hour_local
+      - name: local_date
+        type: categorical
+        expr: "cast(hour_local as date)"
+
+metrics:
+  - name: avg_day_ahead_price
+    label: "Average day-ahead price (EUR/MWh)"
+    description: "Mean of hourly day-ahead prices over the selected period."
+    type: simple
+    type_params:
+      measure: average_price
+
+  - name: negative_price_hours
+    label: "Negative price hours"
+    description: "Number of hours where the day-ahead price was below zero."
+    type: simple
+    type_params:
+      measure: negative_hours
+
+  - name: total_radiation
+    label: "Total global radiation (J/m2)"
+    description: "Summed hourly global radiation at De Bilt."
+    type: simple
+    type_params:
+      measure: radiation_total

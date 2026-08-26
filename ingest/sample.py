@@ -24,18 +24,22 @@ def generate(sample_days: int) -> dict[str, pd.DataFrame]:
     price[negative_hours] = rng.uniform(-60, -5, len(negative_hours))
     price = np.round(price, 2)
 
-    entsoe = pd.DataFrame({
-        "hour_utc": hours_utc,
-        "price_eur_mwh": price,
-        "fetched_at": now.replace(tzinfo=None),
-    })
+    entsoe = pd.DataFrame(
+        {
+            "hour_utc": hours_utc,
+            "price_eur_mwh": price,
+            "fetched_at": now.replace(tzinfo=None),
+        }
+    )
 
     charts_noise = rng.normal(0, 0.15, len(hours_utc))
-    charts = pd.DataFrame({
-        "hour_utc": hours_utc,
-        "price_eur_mwh": np.round(price + charts_noise, 2),
-        "fetched_at": now.replace(tzinfo=None),
-    })
+    charts = pd.DataFrame(
+        {
+            "hour_utc": hours_utc,
+            "price_eur_mwh": np.round(price + charts_noise, 2),
+            "fetched_at": now.replace(tzinfo=None),
+        }
+    )
 
     seasonal_temp = 11.5 + 9.0 * np.sin(2 * np.pi * (day_of_year - 105) / 365.25)
     diurnal_temp = 3.5 * np.sin(2 * np.pi * (hour_of_day - 9) / 24.0)
@@ -45,20 +49,19 @@ def generate(sample_days: int) -> dict[str, pd.DataFrame]:
     cloud = rng.uniform(0.3, 1.0, len(hours_utc))
     radiation = np.round(daylight * cloud * 3_200_000.0, 0)
 
-    local_end = (
-        hours_utc.tz_localize("UTC")
-        .tz_convert(AMS)
-        .tz_localize(None)
-        + pd.Timedelta(hours=1)
+    local_end = hours_utc.tz_localize("UTC").tz_convert(AMS).tz_localize(None) + pd.Timedelta(
+        hours=1
     )
 
-    knmi = pd.DataFrame({
-        "station": 260,
-        "interval_end_local": local_end,
-        "temp_c": temp,
-        "wind_ms": wind,
-        "radiation_jm2": radiation,
-        "fetched_at": now.replace(tzinfo=None),
-    }).drop_duplicates(subset=["station", "interval_end_local"], keep="first")
+    knmi = pd.DataFrame(
+        {
+            "station": 260,
+            "interval_end_local": local_end,
+            "temp_c": temp,
+            "wind_ms": wind,
+            "radiation_jm2": radiation,
+            "fetched_at": now.replace(tzinfo=None),
+        }
+    ).drop_duplicates(subset=["station", "interval_end_local"], keep="first")
 
     return {"entsoe_prices": entsoe, "energycharts_prices": charts, "knmi_weather": knmi}
