@@ -44,7 +44,7 @@ The first live call against energy-charts.info broke three assumptions that all 
 - Sub-hourly points are averaged into their containing hour at parse time, matching the warehouse's declared grain (raw tables keyed on `hour_utc`) instead of the API's.
 - Parsing is split from HTTP (`parse_price_payload`) so this behavior has unit tests that fail without network access.
 - Live window loaders stamp `fetched_at` at ingestion time; parsers stay pure so their column contracts stay unit-testable.
-- Known debt, tracked here on purpose: the ENTSO-E `PT15M` path still emits quarter-hour rows whose raw-table primary key collapses them last-write-wins - right row count, wrong value. Same normalization applies when that source goes live.
+- Resolved when ENTSO-E access arrived: the `PT15M` path now averages sub-hourly points into their hour exactly like energy-charts, covered by the 15-minute fixture test.
 
 ---
 

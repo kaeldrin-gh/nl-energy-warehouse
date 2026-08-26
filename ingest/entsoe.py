@@ -25,6 +25,12 @@ def fetch_day_ahead_prices(
 
 
 def parse_price_xml(content: bytes) -> pd.DataFrame:
+    """Parse an ENTSO-E price document into hourly UTC rows.
+
+    Day-ahead market time units are 15 minutes since the 2025 EU coupling
+    switch; this warehouse is hourly-grained (raw tables keyed on hour_utc),
+    so sub-hourly points are averaged into their containing hour (INC-004).
+    """
     root = ElementTree.fromstring(content)
     rows = []
     for series in root.findall(".//m:TimeSeries", NS):
@@ -42,6 +48,10 @@ def parse_price_xml(content: bytes) -> pd.DataFrame:
             price_text = point.findtext("m:price.amount", namespaces=NS)
             if price_text is None:
                 continue
-            hour_utc = (start + step * (position - 1)).replace(tzinfo=None)
+            ts = start + step * (position - 1)
+            hour_utc = ts.replace(minute=0, second=0, microsecond=0, tzinfo=None)
             rows.append({"hour_utc": hour_utc, "price_eur_mwh": float(price_text)})
-    return pd.DataFrame(rows, columns=["hour_utc", "price_eur_mwh"])
+    df = pd.DataFrame(rows, columns=["hour_utc", "price_eur_mwh"])
+    if df.empty:
+        return df
+    return df.groupby("hour_utc", as_index=False)["price_eur_mwh"].mean()
