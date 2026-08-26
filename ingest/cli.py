@@ -1,9 +1,12 @@
 import argparse
+import time
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from . import db, energycharts, entsoe, knmi, sample
 from .config import settings
+
+BACKFILL_CHUNK_DAYS = 30
+BACKFILL_PAUSE_SECONDS = 1.1
 
 
 def load_sample() -> None:
@@ -16,9 +19,58 @@ def load_sample() -> None:
     conn.close()
 
 
-def load_live(sources: list[str]) -> None:
+def _load_entsoe_window(conn, start: datetime, end: datetime) -> None:
+    df = entsoe.fetch_day_ahead_prices(
+        settings.entsoe_token, settings.nl_bidding_zone, start, end,
+        timeout=settings.request_timeout,
+    )
+    n = db.upsert(conn, "entsoe_prices", df)
+    db.log_run(conn, "entsoe", start, end, n)
+    print(f"entsoe: wrote {n} rows for {start:%Y-%m-%d} .. {end:%Y-%m-%d}")
+
+
+def _load_energycharts_window(conn, start: datetime, end: datetime) -> None:
+    df = energycharts.fetch_day_ahead_prices(settings.nl_bidding_zone, start, end,
+                                             timeout=settings.request_timeout)
+    n = db.upsert(conn, "energycharts_prices", df)
+    db.log_run(conn, "energycharts", start, end, n)
+    print(f"energycharts: wrote {n} rows for {start:%Y-%m-%d} .. {end:%Y-%m-%d}")
+
+
+def _load_knmi(conn, start: datetime, end: datetime) -> None:
+    df = knmi.fetch_hourly(station=260, start_year=start.year, end_year=end.year,
+                           timeout=settings.request_timeout)
+    df = df[(df["interval_end_local"] >= start - timedelta(days=1))
+            & (df["interval_end_local"] <= end + timedelta(days=1))]
+    n = db.upsert(conn, "knmi_weather", df)
+    db.log_run(conn, "knmi", df["interval_end_local"].min() if n else None,
+               df["interval_end_local"].max() if n else None, n)
+    print(f"knmi: wrote {n} rows")
+
+
+def load_live(sources: list[str], backfill_start: datetime | None = None,
+              backfill_end: datetime | None = None) -> None:
     conn = db.connect()
     now = datetime.utcnow()
+
+    if backfill_start is not None:
+        end = backfill_end or now
+        if "entsoe" in sources:
+            if not settings.entsoe_token:
+                print("entsoe: skipped, ENTSOE_TOKEN not set")
+            else:
+                cursor = backfill_start
+                while cursor < end:
+                    chunk_end = min(cursor + timedelta(days=BACKFILL_CHUNK_DAYS), end)
+                    _load_entsoe_window(conn, cursor, chunk_end)
+                    cursor = chunk_end
+                    time.sleep(BACKFILL_PAUSE_SECONDS)
+        if "energycharts" in sources:
+            _load_energycharts_window(conn, backfill_start, end)
+        if "knmi" in sources:
+            _load_knmi(conn, backfill_start, end)
+        conn.close()
+        return
 
     if "entsoe" in sources:
         if not settings.entsoe_token:
@@ -26,31 +78,15 @@ def load_live(sources: list[str]) -> None:
         else:
             wm = db.watermark(conn, "entsoe")
             start = (wm - timedelta(days=settings.lookback_days)) if wm else now - timedelta(days=30)
-            df = entsoe.fetch_day_ahead_prices(
-                settings.entsoe_token, settings.nl_bidding_zone, start, now,
-                timeout=settings.request_timeout,
-            )
-            n = db.upsert(conn, "entsoe_prices", df)
-            db.log_run(conn, "entsoe", start, now, n)
-            print(f"entsoe: wrote {n} rows for window {start} .. {now}")
+            _load_entsoe_window(conn, start, now)
 
     if "energycharts" in sources:
         wm = db.watermark(conn, "energycharts")
         start = (wm - timedelta(days=settings.lookback_days)) if wm else now - timedelta(days=30)
-        df = energycharts.fetch_day_ahead_prices(settings.nl_bidding_zone, start, now,
-                                                 timeout=settings.request_timeout)
-        n = db.upsert(conn, "energycharts_prices", df)
-        db.log_run(conn, "energycharts", start, now, n)
-        print(f"energycharts: wrote {n} rows for window {start} .. {now}")
+        _load_energycharts_window(conn, start, now)
 
     if "knmi" in sources:
-        this_year = now.year
-        df = knmi.fetch_hourly(station=260, start_year=this_year - 1, end_year=this_year,
-                               timeout=settings.request_timeout)
-        n = db.upsert(conn, "knmi_weather", df)
-        db.log_run(conn, "knmi", df["interval_end_local"].min() if n else None,
-                   df["interval_end_local"].max() if n else None, n)
-        print(f"knmi: wrote {n} rows")
+        _load_knmi(conn, now - timedelta(days=400), now)
 
     conn.close()
 
@@ -76,6 +112,12 @@ def main() -> None:
                       help="load deterministic sample data instead of live sources")
     load.add_argument("--sources", default="entsoe,energycharts,knmi",
                       help="comma-separated subset of entsoe,energycharts,knmi")
+    load.add_argument("--backfill", action="store_true",
+                      help="chunked historical load; requires --from")
+    load.add_argument("--from", dest="date_from", default=None,
+                      help="backfill start date, YYYY-MM-DD")
+    load.add_argument("--to", dest="date_to", default=None,
+                      help="backfill end date, YYYY-MM-DD (default: now)")
 
     sub.add_parser("export", help="export mart tables to exports/ as Parquet for BI tools")
 
@@ -84,8 +126,16 @@ def main() -> None:
     if args.command == "load":
         if args.sample:
             load_sample()
-        else:
-            load_live([s.strip() for s in args.sources.split(",") if s.strip()])
+            return
+        backfill_start = None
+        if args.backfill:
+            if not args.date_from:
+                parser.error("--backfill requires --from YYYY-MM-DD")
+            backfill_start = datetime.strptime(args.date_from, "%Y-%m-%d")
+        backfill_end = (datetime.strptime(args.date_to, "%Y-%m-%d")
+                        if args.date_to else None)
+        load_live([s.strip() for s in args.sources.split(",") if s.strip()],
+                  backfill_start, backfill_end)
     elif args.command == "export":
         export_marts()
 

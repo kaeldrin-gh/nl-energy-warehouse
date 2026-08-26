@@ -1,3 +1,9 @@
+{{ config(
+    materialized='incremental',
+    unique_key='local_date',
+    incremental_strategy='delete+insert'
+) }}
+
 select
     cast(hour_local as date) as local_date,
     count(*) as hours_in_day,
@@ -9,4 +15,8 @@ select
     round(max(wind_ms), 1) as max_wind_ms,
     round(coalesce(sum(radiation_jm2), 0) / 1e6, 1) as total_radiation_mj_m2
 from {{ ref('fct_hourly_price_weather') }}
+
+{% if is_incremental() %}
+where cast(hour_local as date) >= (select coalesce(max(local_date), date '1900-01-01') from {{ this }}) - interval 7 day
+{% endif %}
 group by 1

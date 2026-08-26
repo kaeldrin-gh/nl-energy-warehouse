@@ -3,7 +3,8 @@ import zipfile
 from datetime import datetime, timezone
 
 import pandas as pd
-import requests
+
+from .http import get_with_retry
 
 CDN_URL = "https://cdn.knmi.nl/knmi/json/page/weer/waarnemingen/uurgeg_{station}_{decade}.zip"
 
@@ -22,8 +23,7 @@ def fetch_hourly(station: int, start_year: int, end_year: int, timeout: int = 12
     frames = []
     for decade in sorted({decade_for(y) for y in (start_year, end_year)}):
         url = CDN_URL.format(station=station, decade=decade)
-        resp = requests.get(url, timeout=timeout)
-        resp.raise_for_status()
+        resp = get_with_retry(url, timeout=timeout)
         frames.append(parse_uurgeg_zip(resp.content))
     df = pd.concat(frames, ignore_index=True)
     df = df.drop_duplicates(subset=["station", "interval_end_local"], keep="last")
