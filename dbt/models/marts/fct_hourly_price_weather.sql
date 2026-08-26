@@ -10,6 +10,7 @@ select
     price_eur_mwh,
     price_eur_mwh_cross_source,
     price_diff_eur,
+    price_source,
     has_weather_match,
     temp_c,
     wind_ms,

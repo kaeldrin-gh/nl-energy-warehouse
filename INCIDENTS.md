@@ -4,6 +4,22 @@ Postmortems of the data problems this warehouse is designed against. Each incide
 
 ---
 
+## INC-004: One row per hour, wrong number inside
+
+**Category**: granularity / integration contract
+
+The first live call against energy-charts.info broke two assumptions that all committed fixtures had baked in. First, it rejects ENTSO-E EIC zone codes with HTTP 400 instead of empty data - the two APIs describe the same bidding zone with different identifiers. Second, since Europe's day-ahead coupling switched to 15-minute market time units, the API returns four price points per delivery hour; truncating timestamps to the hour and de-duplicating kept only each hour's :45 quarter as *the* hourly price. That failure is nasty: row counts stay plausible (one row per hour), values look like prices, but every downstream aggregate quietly carries a quarter-slot sample instead of the hour's mean.
+
+**Detection**: assert payload size against the requested window before trusting it - 193 points for 48 hours means 15-minute resolution, not noise. Longer term, `assert_cross_source_alignment` would surface a systematic diff once ENTSO-E goes live, but only after the bad data had shipped.
+
+**Design response**:
+- Zone-id translation lives in one explicit map (`ZONE_MAP`) at the fetch boundary; neither the CLI nor the models know the two vocabularies differ.
+- Sub-hourly points are averaged into their containing hour at parse time, matching the warehouse's declared grain (raw tables keyed on `hour_utc`) instead of the API's.
+- Parsing is split from HTTP (`parse_price_payload`) so this behavior has unit tests that fail without network access.
+- Known debt, tracked here on purpose: the ENTSO-E `PT15M` path still emits quarter-hour rows whose raw-table primary key collapses them last-write-wins - right row count, wrong value. Same normalization applies when that source goes live.
+
+---
+
 ## INC-003: The price you fetched yesterday is not the price published today
 
 **Category**: late-arriving revision

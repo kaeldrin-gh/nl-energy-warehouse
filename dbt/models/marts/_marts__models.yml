@@ -6,6 +6,9 @@ models:
     columns:
       - name: hour_utc
         tests: [unique, not_null]
+      - name: price_source
+        description: "Which source supplied the primary price: 'entsoe' (authoritative) or 'energycharts' (fallback for hours ENTSO-E has not published)."
+        tests: [not_null]
       - name: price_eur_mwh
         tests: [not_null]
       - name: is_negative_price
