@@ -1,5 +1,10 @@
 # nl-energy-warehouse
 
+[![ci](https://github.com/kaeldrin-gh/nl-energy-warehouse/actions/workflows/ci.yml/badge.svg)](https://github.com/kaeldrin-gh/nl-energy-warehouse/actions/workflows/ci.yml)
+[![docs](https://github.com/kaeldrin-gh/nl-energy-warehouse/actions/workflows/docs.yml/badge.svg)](https://github.com/kaeldrin-gh/nl-energy-warehouse/actions/workflows/docs.yml)
+![Python](https://img.shields.io/badge/python-3.12-blue)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
 A production-style data warehouse for Dutch electricity prices and weather, built to answer one question: **what actually drives the hourly power price in the Netherlands, and when is it cheap?**
 
 Day-ahead prices from the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu/), hourly weather from the [KNMI](https://www.knmi.nl/nederland-nu/klimatologie/uurgegeven), cross-checked against [energy-charts.info](https://energy-charts.info/). Ingested idempotently with revision-aware upserts, modeled in dbt, tested in CI, and served as clean marts for BI.
@@ -32,6 +37,25 @@ energy-charts (JS)─┘                                              │
 - **Staging**: deduplication to latest revision, KNMI local-hour to UTC conversion with explicit DST semantics.
 - **Marts**: `fct_hourly_price_weather` (one row per UTC hour, price + weather + cross-source diff, `price_source` provenance flag) and `mart_daily_summary`, both incremental with a revision-matched reprocessing window. ENTSO-E is authoritative; energy-charts fills unpublished hours as a flagged fallback.
 - **Tests**: uniqueness, sanity bounds, cross-source price alignment, hour-continuity.
+
+## What it looks like
+
+Two years of **real** Dutch day-ahead prices (energy-charts.info fallback source) flowing through the dbt marts to Parquet and Power BI. Every visual below is backed by a query block in [`analysis/bi_queries.sql`](analysis/bi_queries.sql); measures live in [`analysis/powerbi_measures.md`](analysis/powerbi_measures.md).
+
+![Dashboard overview](docs/images/04_overview.png)
+*Full report page: headline stats, daily price development, hour-of-day profile, negative-price analysis.*
+
+**Daily average price** — the December 2024 scarcity event pushes one day's average to ~€360/MWh (hourly extreme that day: €873) *(V1)*:
+
+![Daily average day-ahead price](docs/images/01_price_timeline.png)
+
+**Days with negative prices** — solar-glut clusters concentrate in spring and summer 2026, including days with up to ~19 sub-zero hours *(V3)*:
+
+![Negative-price hours per day](docs/images/02_negative_hours.png)
+
+**Shape of an average day** — evening peak vs midday solar dip; the duck curve, straight from market data *(V2)*:
+
+![Average price by hour of day](docs/images/03_day_shape.png)
 
 ## Quickstart
 
@@ -119,8 +143,7 @@ python -m pytest tests -v
 - [x] dbt semantic layer metric definitions, validated in CI
 - [x] Scheduled ingest workflow, docs site on GitHub Pages, pre-commit lint
 - [x] Dependency lockfile and Docker image
+- [x] Power BI dashboard screenshots in README (measure pack in `analysis/`)
 - [ ] KNMI Data Platform migration for live weather ingestion ([INC-006](INCIDENTS.md))
-- [ ] README badges (CI status, Python version, code style)
-- [ ] Power BI dashboard pack (screenshots + PBIX)
 - [ ] ENTSO-E generation mix and cross-border flows
 - [ ] Cheap-hour notification service
