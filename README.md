@@ -40,7 +40,7 @@ energy-charts (JS)─┘                                              │
 
 ## What it looks like
 
-Two years of **real** Dutch day-ahead prices (energy-charts.info fallback source) flowing through the dbt marts to Parquet and Power BI. Every visual below is backed by a query block in [`analysis/bi_queries.sql`](analysis/bi_queries.sql); measures live in [`analysis/powerbi_measures.md`](analysis/powerbi_measures.md). The Power BI file itself is in the repo: [`powerbi/nl-energy-dashboard.pbix`](powerbi/nl-energy-dashboard.pbix).
+Two years of **real** Dutch day-ahead prices - ENTSO-E primary, energy-charts.info cross-check and gap-filler - flowing through the dbt marts to Parquet and Power BI. Every visual below is backed by a query block in [`analysis/bi_queries.sql`](analysis/bi_queries.sql); measures live in [`analysis/powerbi_measures.md`](analysis/powerbi_measures.md). The Power BI file itself is in the repo: [`powerbi/nl-energy-dashboard.pbix`](powerbi/nl-energy-dashboard.pbix).
 
 ![Dashboard overview](docs/images/04_overview.png)
 *Full report page: headline stats, daily price development, hour-of-day profile, negative-price analysis.*
@@ -72,14 +72,7 @@ python -m ingest.cli load                                   # incremental: new w
 python -m ingest.cli load --backfill --from 2024-01-01      # chunked historical load, retry with backoff
 ```
 
-No ENTSO-E token yet? energy-charts.info needs no credentials, so the pipeline runs on **real prices** today:
-
-```bash
-python -m ingest.cli load --sources energycharts --backfill --from 2024-08-01
-dbt build --project-dir dbt --profiles-dir dbt --full-refresh
-```
-
-The fact mart prefers ENTSO-E where both sources publish and falls back to energy-charts for hours it does not, with a `price_source` provenance column so every number in BI is attributable. When the token arrives, the coalesce starts preferring ENTSO-E automatically and the cross-source alignment test takes over. Live KNMI ingestion is temporarily offline - KNMI retired the legacy uurgeg file downloads mid-project ([INC-006](INCIDENTS.md)); weather arrives again after the Data Platform migration.
+Live status: **ENTSO-E is the primary source** (token configured via `.env` / the `ENTSOE_TOKEN` secret; the daily cron ingests incrementally with a 7-day revision lookback). energy-charts.info covers the ~1.5% of hours where ENTSO-E's publication is incomplete, with a `price_source` provenance column so every number in BI is attributable, and `assert_cross_source_alignment` holds both publishers to a EUR 2/MWh agreement on every hour where they overlap. Live KNMI ingestion is temporarily offline - KNMI retired the legacy uurgeg file downloads mid-project ([INC-006](INCIDENTS.md)); weather arrives again after the Data Platform migration.
 
 The mart models are incremental (`delete+insert`) with a 7-day reprocessing window that matches the ingestion revision lookback, so a retroactive source correction propagates from raw to marts on the next run without a full refresh.
 
