@@ -27,6 +27,8 @@ def _load_entsoe_window(conn, start: datetime, end: datetime) -> None:
         end,
         timeout=settings.request_timeout,
     )
+    if not df.empty:
+        df["fetched_at"] = datetime.utcnow()
     n = db.upsert(conn, "entsoe_prices", df)
     db.log_run(conn, "entsoe", start, end, n)
     print(f"entsoe: wrote {n} rows for {start:%Y-%m-%d} .. {end:%Y-%m-%d}")
@@ -36,6 +38,8 @@ def _load_energycharts_window(conn, start: datetime, end: datetime) -> None:
     df = energycharts.fetch_day_ahead_prices(
         settings.nl_bidding_zone, start, end, timeout=settings.request_timeout
     )
+    if not df.empty:
+        df["fetched_at"] = datetime.utcnow()
     n = db.upsert(conn, "energycharts_prices", df)
     db.log_run(conn, "energycharts", start, end, n)
     print(f"energycharts: wrote {n} rows for {start:%Y-%m-%d} .. {end:%Y-%m-%d}")

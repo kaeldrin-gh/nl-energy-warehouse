@@ -4,11 +4,38 @@ Postmortems of the data problems this warehouse is designed against. Each incide
 
 ---
 
+## INC-005: The sanity test that rejected reality
+
+**Category**: quality / test calibration
+
+Two years of real Dutch day-ahead prices contain an €873/MWh scarcity hour (December 2024) and a −€498/MWh solar-glut hour (May 2026). The price-sanity test, calibrated against synthetic sample data, flagged both as impossible (`price < -200 or price > 500`) and failed the build on the first genuine backfill. A guardrail tuned to fake data does not just miss bugs - it actively rejects the truth, and worse, it trains you to distrust the one signal that was working correctly.
+
+**Detection**: the failure itself. Querying the offending rows showed coherent multi-hour ramps around each extreme - market events, not unit errors (a ×100 bug produces 52,310 EUR/MWh spikes in isolated hours, not smooth December-evening curves).
+
+**Design response**:
+- Bounds now follow the exchange's own technical limits (SDAC/EUPHEMIA: −500 .. +4000 EUR/MWh) instead of observed sample variance. Anything outside the *legal* trading range is a bug by definition; everything inside it is somebody's problem to explain, not the test's job to veto.
+- Rule of thumb adopted repo-wide: thresholds derived from fixtures are placeholders until they have survived contact with production data.
+
+---
+
+## INC-006: KNMI retired the endpoint the parser was built against
+
+**Category**: source lifecycle
+
+The KNMI uurgeg ingestion downloads decade-zips from `cdn.knmi.nl`. Mid-project those URLs began returning 403 across all ranges: KNMI migrated bulk distribution to its Data Platform, leaving the interactive HTML page up but silently killing the file URLs the parser targets. Nothing about our code changed - the source's contract simply expired. The pipeline fails loudly here (a hard 403 beats empty files parsed into an empty table), so the breakage was visible immediately rather than discovered via missing weather months later.
+
+**Design response**:
+- Migration to the KNMI Data Platform API is tracked as backlog work, with the existing uurgeg fixture tests kept as the parser contract the new fetcher must satisfy.
+- Raw tables store KNMI rows exactly as published (local-hour labels), which keeps the staging-layer DST logic reusable regardless of where the bytes come from.
+- Until then, marts run on price-only data through the provenance/fallback path ([INC-004](#inc-004-one-row-per-hour-wrong-number-inside)); weather columns surface as explicit nulls, not zeros.
+
+---
+
 ## INC-004: One row per hour, wrong number inside
 
 **Category**: granularity / integration contract
 
-The first live call against energy-charts.info broke two assumptions that all committed fixtures had baked in. First, it rejects ENTSO-E EIC zone codes with HTTP 400 instead of empty data - the two APIs describe the same bidding zone with different identifiers. Second, since Europe's day-ahead coupling switched to 15-minute market time units, the API returns four price points per delivery hour; truncating timestamps to the hour and de-duplicating kept only each hour's :45 quarter as *the* hourly price. That failure is nasty: row counts stay plausible (one row per hour), values look like prices, but every downstream aggregate quietly carries a quarter-slot sample instead of the hour's mean.
+The first live call against energy-charts.info broke three assumptions that all committed fixtures and sample runs had baked in. First, it rejects ENTSO-E EIC zone codes with HTTP 400 instead of empty data - the two APIs describe the same bidding zone with different identifiers. Second, since Europe's day-ahead coupling switched to 15-minute market time units, the API returns four price points per delivery hour; truncating timestamps to the hour and de-duplicating kept only each hour's :45 quarter as *the* hourly price - row counts stay plausible, values look like prices, but every downstream aggregate quietly carries a quarter-slot sample instead of the hour's mean. Third, the live load path had simply never executed: sample mode stamps `fetched_at` itself, so the fact that the live loaders did not (crashing the insert against the raw table schema) went unnoticed until the first real backfill.
 
 **Detection**: assert payload size against the requested window before trusting it - 193 points for 48 hours means 15-minute resolution, not noise. Longer term, `assert_cross_source_alignment` would surface a systematic diff once ENTSO-E goes live, but only after the bad data had shipped.
 
@@ -16,6 +43,7 @@ The first live call against energy-charts.info broke two assumptions that all co
 - Zone-id translation lives in one explicit map (`ZONE_MAP`) at the fetch boundary; neither the CLI nor the models know the two vocabularies differ.
 - Sub-hourly points are averaged into their containing hour at parse time, matching the warehouse's declared grain (raw tables keyed on `hour_utc`) instead of the API's.
 - Parsing is split from HTTP (`parse_price_payload`) so this behavior has unit tests that fail without network access.
+- Live window loaders stamp `fetched_at` at ingestion time; parsers stay pure so their column contracts stay unit-testable.
 - Known debt, tracked here on purpose: the ENTSO-E `PT15M` path still emits quarter-hour rows whose raw-table primary key collapses them last-write-wins - right row count, wrong value. Same normalization applies when that source goes live.
 
 ---
