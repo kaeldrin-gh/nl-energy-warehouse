@@ -6,11 +6,13 @@ on:
     cron: "45 13 * * *"
   workflow_dispatch:
 
+# Workflow-level env may read `secrets`; job/step-level may not.
+env:
+  ENTSOE_TOKEN: ${{ secrets.ENTSOE_TOKEN }}
+
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    env:
-      ENTSOE_TOKEN: ${{ secrets.ENTSOE_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
