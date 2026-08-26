@@ -1,8 +1,7 @@
 from datetime import datetime
 
-import pandas as pd
-
 from conftest import load_fixture
+
 from ingest import entsoe
 
 
@@ -26,10 +25,12 @@ def test_parses_15_minute_resolution():
     df = entsoe.parse_price_xml(load_fixture("entsoe_prices_15min.xml"))
 
     assert len(df) == 4
-    expected = [datetime(2026, 8, 24, 22, 0),
-                datetime(2026, 8, 24, 22, 15),
-                datetime(2026, 8, 24, 22, 30),
-                datetime(2026, 8, 24, 22, 45)]
+    expected = [
+        datetime(2026, 8, 24, 22, 0),
+        datetime(2026, 8, 24, 22, 15),
+        datetime(2026, 8, 24, 22, 30),
+        datetime(2026, 8, 24, 22, 45),
+    ]
     assert df["hour_utc"].tolist() == expected
 
 

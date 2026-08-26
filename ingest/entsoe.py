@@ -9,8 +9,9 @@ BASE_URL = "https://web-api.tp.entsoe.eu/api"
 NS = {"m": "urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3"}
 
 
-def fetch_day_ahead_prices(token: str, bidding_zone: str, start_utc: datetime, end_utc: datetime,
-                            timeout: int = 60) -> pd.DataFrame:
+def fetch_day_ahead_prices(
+    token: str, bidding_zone: str, start_utc: datetime, end_utc: datetime, timeout: int = 60
+) -> pd.DataFrame:
     params = {
         "securityToken": token,
         "documentType": "A44",

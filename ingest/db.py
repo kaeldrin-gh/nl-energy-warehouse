@@ -54,9 +54,7 @@ def upsert(conn: duckdb.DuckDBPyConnection, table: str, df) -> int:
     if df.empty:
         return 0
     conn.register("upsert_df", df)
-    conn.execute(
-        f"INSERT OR REPLACE INTO raw.{table} SELECT * FROM upsert_df"
-    )
+    conn.execute(f"INSERT OR REPLACE INTO raw.{table} SELECT * FROM upsert_df")
     n = conn.execute("SELECT count(*) FROM upsert_df").fetchone()[0]
     conn.unregister("upsert_df")
     return n

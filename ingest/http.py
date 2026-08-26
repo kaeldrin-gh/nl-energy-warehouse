@@ -5,8 +5,9 @@ import requests
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
 
-def get_with_retry(url: str, *, params=None, timeout: int = 60,
-                   max_retries: int = 4, initial_delay: float = 2.0) -> requests.Response:
+def get_with_retry(
+    url: str, *, params=None, timeout: int = 60, max_retries: int = 4, initial_delay: float = 2.0
+) -> requests.Response:
     delay = initial_delay
     last_error = None
     for attempt in range(max_retries):

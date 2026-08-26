@@ -1,8 +1,8 @@
+import math
 from datetime import datetime
 
-import math
-
 from conftest import load_fixture
+
 from ingest import knmi
 
 
