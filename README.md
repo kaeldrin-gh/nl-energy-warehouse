@@ -40,7 +40,7 @@ energy-charts (JS)─┘                                              │
 
 ## What it looks like
 
-Two years of **real** Dutch day-ahead prices (energy-charts.info fallback source) flowing through the dbt marts to Parquet and Power BI. Every visual below is backed by a query block in [`analysis/bi_queries.sql`](analysis/bi_queries.sql); measures live in [`analysis/powerbi_measures.md`](analysis/powerbi_measures.md).
+Two years of **real** Dutch day-ahead prices (energy-charts.info fallback source) flowing through the dbt marts to Parquet and Power BI. Every visual below is backed by a query block in [`analysis/bi_queries.sql`](analysis/bi_queries.sql); measures live in [`analysis/powerbi_measures.md`](analysis/powerbi_measures.md). The Power BI file itself is in the repo: [`powerbi/nl-energy-dashboard.pbix`](powerbi/nl-energy-dashboard.pbix).
 
 ![Dashboard overview](docs/images/04_overview.png)
 *Full report page: headline stats, daily price development, hour-of-day profile, negative-price analysis.*
