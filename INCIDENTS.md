@@ -4,6 +4,21 @@ Postmortems of the data problems this warehouse is designed against. Each incide
 
 ---
 
+## INC-007: The hour that published three quarters of itself
+
+**Category**: partial data / source quality
+
+The first live ENTSO-E days exposed two failure modes in the wild, both caught by the cross-source alignment check before they reached a single BI visual. First: ENTSO-E PT15M documents sometimes omit individual MTU positions outright - for Aug 25 12:00 UTC the document contained positions 58, 59, 60 but skipped 54-57's neighbours, leaving one hour with 3 of its 4 quarters. Averaging the survivors produced 15.25 EUR/MWh where the true hourly price was 11.44 - a 36% bias from a document that looks perfectly healthy. Second: energy-charts.info served a transiently wrong value for a week-old hour (147.54 vs the correct 153.25, confirmed identical quarter data from both sources), then corrected itself within minutes - proving that even "settled" history deserves refetching.
+
+**Detection**: `assert_cross_source_alignment`, on day one. Mean cross-source diff was EUR 0.06; two hours stood out at EUR 3.8 and EUR 5.7. Quarter-level API probes of both sources turned each into a precise diagnosis within minutes - the alignment test did exactly what INC-001 designed it for.
+
+**Design response**:
+- Hours without full MTU coverage (`points x mtu_minutes != 3600`) are **dropped at parse time**, never published as biased means; the provenance/fallback path supplies them from the cross-check source instead, so the hour is honest about where its number came from.
+- energy-charts backfills are **chunked like ENTSO-E's** (30 days), so transient source errors are re-validated window-by-window on every run instead of baked into a single giant request.
+- The 7-day revision lookback remains the convergence mechanism: both transient cases healed on refetch without manual intervention.
+
+---
+
 ## INC-005: The sanity test that rejected reality
 
 **Category**: quality / test calibration

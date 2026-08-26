@@ -30,6 +30,15 @@ def test_parses_15_minute_resolution():
     assert df.loc[0, "price_eur_mwh"] == (70.00 + 71.25 + 69.50 + 73.10) / 4
 
 
+def test_drops_hours_with_missing_mtu_positions():
+    # Second hour lacks its 4th quarter (position 8 absent) - publishing the
+    # mean of 3 quarters would bias the hour (INC-007), so it is dropped.
+    df = entsoe.parse_price_xml(load_fixture("entsoe_prices_15min_gap.xml"))
+
+    assert df["hour_utc"].tolist() == [datetime(2026, 8, 24, 22, 0)]
+    assert df.loc[0, "price_eur_mwh"] == (70.00 + 71.25 + 69.50 + 73.10) / 4
+
+
 def test_output_is_naive_utc():
     df = entsoe.parse_price_xml(load_fixture("entsoe_prices.xml"))
     assert df["hour_utc"].dt.tz is None

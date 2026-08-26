@@ -6,7 +6,7 @@ from . import db, energycharts, entsoe, knmi, report, sample
 from .config import settings
 
 BACKFILL_CHUNK_DAYS = 30
-BACKFILL_PAUSE_SECONDS = 1.1
+BACKFILL_PAUSE_SECONDS = 5.0
 
 
 def load_sample() -> None:
@@ -83,7 +83,15 @@ def load_live(
                     cursor = chunk_end
                     time.sleep(BACKFILL_PAUSE_SECONDS)
         if "energycharts" in sources:
-            _load_energycharts_window(conn, backfill_start, end)
+            # Chunked like ENTSO-E: the API served a transiently wrong hour on a
+            # multi-year single request (INC-007); modest windows keep every
+            # refetch re-validating a small range.
+            cursor = backfill_start
+            while cursor < end:
+                chunk_end = min(cursor + timedelta(days=BACKFILL_CHUNK_DAYS), end)
+                _load_energycharts_window(conn, cursor, chunk_end)
+                cursor = chunk_end
+                time.sleep(BACKFILL_PAUSE_SECONDS)
         if "knmi" in sources:
             _load_knmi(conn, backfill_start, end)
         conn.close()

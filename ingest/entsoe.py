@@ -30,6 +30,11 @@ def parse_price_xml(content: bytes) -> pd.DataFrame:
     Day-ahead market time units are 15 minutes since the 2025 EU coupling
     switch; this warehouse is hourly-grained (raw tables keyed on hour_utc),
     so sub-hourly points are averaged into their containing hour (INC-004).
+
+    ENTSO-E PT15M documents sometimes omit individual MTU positions (INC-007).
+    Averaging the surviving quarters biases the hourly mean, so hours without
+    full coverage (points x mtu_minutes == 3600) are dropped entirely and left
+    to the cross-source fallback instead of published as biased values.
     """
     root = ElementTree.fromstring(content)
     rows = []
@@ -38,7 +43,8 @@ def parse_price_xml(content: bytes) -> pd.DataFrame:
         if period is None:
             continue
         resolution = period.findtext("m:resolution", namespaces=NS) or "PT60M"
-        step = timedelta(minutes=15 if resolution == "PT15M" else 60)
+        mtu_minutes = 15 if resolution == "PT15M" else 60
+        step = timedelta(minutes=mtu_minutes)
         start_text = period.findtext("m:timeInterval/m:start", namespaces=NS)
         if start_text is None:
             continue
@@ -50,8 +56,17 @@ def parse_price_xml(content: bytes) -> pd.DataFrame:
                 continue
             ts = start + step * (position - 1)
             hour_utc = ts.replace(minute=0, second=0, microsecond=0, tzinfo=None)
-            rows.append({"hour_utc": hour_utc, "price_eur_mwh": float(price_text)})
-    df = pd.DataFrame(rows, columns=["hour_utc", "price_eur_mwh"])
+            rows.append(
+                {
+                    "hour_utc": hour_utc,
+                    "mtu_minutes": mtu_minutes,
+                    "price_eur_mwh": float(price_text),
+                }
+            )
+    df = pd.DataFrame(rows, columns=["hour_utc", "mtu_minutes", "price_eur_mwh"])
     if df.empty:
         return df
-    return df.groupby("hour_utc", as_index=False)["price_eur_mwh"].mean()
+    counts = df.groupby("hour_utc")["price_eur_mwh"].transform("size")
+    mixed = df.groupby("hour_utc")["mtu_minutes"].transform("nunique")
+    full = df[(counts * df["mtu_minutes"] == 60) & (mixed == 1)]
+    return full.groupby("hour_utc", as_index=False)["price_eur_mwh"].mean()
