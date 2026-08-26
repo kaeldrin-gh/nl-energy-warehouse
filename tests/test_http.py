@@ -41,9 +41,7 @@ def test_honors_retry_after_header(monkeypatch):
 
 def test_raises_after_exhausting_retries(monkeypatch):
     sleeps = []
-    monkeypatch.setattr(
-        http.requests, "get", lambda *a, **k: FakeResponse(500)
-    )
+    monkeypatch.setattr(http.requests, "get", lambda *a, **k: FakeResponse(500))
     monkeypatch.setattr(http.time, "sleep", sleeps.append)
 
     with pytest.raises(requests.HTTPError):
