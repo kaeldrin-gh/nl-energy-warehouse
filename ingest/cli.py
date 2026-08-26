@@ -1,6 +1,7 @@
 import argparse
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from . import db, energycharts, entsoe, knmi, report, sample
 from .config import settings
@@ -118,12 +119,16 @@ def load_live(
     conn.close()
 
 
-def export_marts() -> None:
-    conn = db.connect()
-    out = settings.root / "exports"
-    out.mkdir(exist_ok=True)
+def export_marts(out_dir: Path | None = None, duckdb_path: Path | None = None) -> None:
+    conn = db.connect(duckdb_path)
+    out = out_dir or (settings.root / "exports")
+    out.mkdir(parents=True, exist_ok=True)
     for table in ("fct_hourly_price_weather", "mart_daily_summary"):
         df = conn.execute(f"select * from main.{table}").fetchdf()
+        if table == "fct_hourly_price_weather" and "hour_local_label" in df.columns:
+            # Nullable by design (hours without weather); keep the pandas dtype
+            # stable whether or not the current warehouse has weather rows.
+            df["hour_local_label"] = df["hour_local_label"].astype("Int64")
         path = out / f"{table}.parquet"
         df.to_parquet(path, index=False)
         print(f"exported {path.name} ({len(df)} rows)")

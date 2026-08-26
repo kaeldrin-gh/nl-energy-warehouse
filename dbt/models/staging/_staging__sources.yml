@@ -4,6 +4,10 @@ sources:
   - name: raw
     schema: raw
     description: "Tables written by the ingest package. Natural-keyed, revision-aware upserts."
+    freshness:
+      warn_after: {count: 26, period: hour}
+      error_after: {count: 74, period: hour}
+    loaded_at_field: fetched_at
     tables:
       - name: entsoe_prices
         description: "ENTSO-E day-ahead prices, NL bidding zone. hour_utc is the delivery hour start (UTC)."
@@ -11,3 +15,7 @@ sources:
         description: "energy-charts.info day-ahead prices for the same zone. Independent republish of ENTSO-E data, used for cross-checking."
       - name: knmi_weather
         description: "KNMI hourly station observations (De Bilt). interval_end_local is the hour-ending label in local wall-clock time, as published."
+        # Legacy download endpoint retired (INC-006); the table is empty until
+        # the Data Platform migration lands, so freshness checks are disabled
+        # for this source only (an empty table is infinitely stale by definition).
+        freshness: null
