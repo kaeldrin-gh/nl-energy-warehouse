@@ -50,7 +50,25 @@ python -m ingest.cli load --backfill --from 2024-01-01      # chunked historical
 
 The mart models are incremental (`delete+insert`) with a 7-day reprocessing window that matches the ingestion revision lookback, so a retroactive source correction propagates from raw to marts on the next run without a full refresh.
 
+The mart models are incremental (`delete+insert`) with a 7-day reprocessing window that matches the ingestion revision lookback, so a retroactive source correction propagates from raw to marts on the next run without a full refresh.
+
 Everything runs locally on DuckDB. A Snowflake profile stub is included in `dbt/profiles.yml`; the models are plain SQL and port directly.
+
+## Semantic layer
+
+`dbt/models/semantics.yml` exposes the marts through the dbt Semantic Layer: an hourly semantic model over `fct_hourly_price_weather` with three metrics (`avg_day_ahead_price`, `negative_price_hours`, `total_radiation`). The definitions are parsed and validated on every CI run as part of `dbt build`. They are plain YAML and travel with the SQL to Snowflake unchanged, where metrics become queryable through the hosted dbt Semantic Layer and its BI integrations.
+
+> Local metric queries via the `mf` CLI (dbt-metricflow) currently pin to dbt-core ~1.8-era adapters; against dbt 1.12 the CLI crashes inside adapter connection handling (the definitions themselves parse and validate cleanly). When dbt-metricflow catches up, `mf query --metrics avg_day_ahead_price --group-by metric_time` works against this repo out of the box.
+
+## CI/CD
+
+Three GitHub Actions workflows live in `.github/workflows/`:
+
+- **ci** — ruff lint + format check, the full pytest suite (including the DST integration tests that run complete dbt builds), then a sample-data `dbt build`. Runs on every push and PR.
+- **docs** — regenerates the dbt documentation site from seeded sample data and deploys it to GitHub Pages.
+- **ingest** — daily cron running the incremental live ingest → `dbt build` → Parquet export, uploaded as workflow artifacts. Skips gracefully when the `ENTSOE_TOKEN` secret is absent, so forks stay green without credentials.
+
+Local pre-commit hooks (`ruff --fix`, `ruff-format`) mirror the CI lint job: `pre-commit install`.
 
 ## Testing
 
@@ -70,11 +88,15 @@ python -m pytest tests -v
 - Timezone and DST handling as an explicit, tested modeling decision
 - Cross-source reconciliation with an automated alignment test
 - dbt layering (staging / intermediate / marts) with tests wired into CI
+- dbt Semantic Layer metric definitions (YAML) over the fact mart, validated on every build
 - Deterministic sample mode so the whole pipeline runs without credentials
 
 ## Roadmap
 
-- [ ] Incremental models with `dbt.incremental` strategy once history grows
+- [x] Incremental mart models with a revision-matched reprocessing window
+- [x] dbt semantic layer metric definitions, validated in CI
+- [x] Scheduled ingest workflow, docs site on GitHub Pages, pre-commit lint
+- [ ] README badges (CI status, Python version, code style)
 - [ ] Power BI dashboard pack (screenshots + PBIX)
 - [ ] ENTSO-E generation mix and cross-border flows
 - [ ] Cheap-hour notification service
