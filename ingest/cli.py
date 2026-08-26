@@ -3,7 +3,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import db, energycharts, entsoe, knmi, report, sample
+from . import db, energycharts, entsoe, knmi, openmeteo, report, sample
 from .config import settings
 
 BACKFILL_CHUNK_DAYS = 30
@@ -44,6 +44,23 @@ def _load_energycharts_window(conn, start: datetime, end: datetime) -> None:
     n = db.upsert(conn, "energycharts_prices", df)
     db.log_run(conn, "energycharts", start, end, n)
     print(f"energycharts: wrote {n} rows for {start:%Y-%m-%d} .. {end:%Y-%m-%d}")
+
+
+def _load_openmeteo(conn, start: datetime, end: datetime) -> None:
+    df = openmeteo.fetch_hourly(
+        start_date=start.strftime("%Y-%m-%d"),
+        end_date=end.strftime("%Y-%m-%d"),
+        timeout=settings.request_timeout,
+    )
+    n = db.upsert(conn, "openmeteo_weather", df)
+    db.log_run(
+        conn,
+        "openmeteo",
+        df["interval_end_local"].min() if n else None,
+        df["interval_end_local"].max() if n else None,
+        n,
+    )
+    print(f"openmeteo: wrote {n} rows for {start:%Y-%m-%d} .. {end:%Y-%m-%d}")
 
 
 def _load_knmi(conn, start: datetime, end: datetime) -> None:
@@ -93,6 +110,15 @@ def load_live(
                 _load_energycharts_window(conn, cursor, chunk_end)
                 cursor = chunk_end
                 time.sleep(BACKFILL_PAUSE_SECONDS)
+        if "openmeteo" in sources:
+            # Archive API handles multi-year windows; chunk per year to keep
+            # payloads modest and resumable.
+            cursor = datetime(backfill_start.year, 1, 1)
+            while cursor <= end:
+                year_end = min(datetime(cursor.year, 12, 31, 23, 0), end)
+                _load_openmeteo(conn, max(cursor, backfill_start), year_end)
+                cursor = datetime(cursor.year + 1, 1, 1)
+                time.sleep(BACKFILL_PAUSE_SECONDS)
         if "knmi" in sources:
             _load_knmi(conn, backfill_start, end)
         conn.close()
@@ -112,6 +138,9 @@ def load_live(
         wm = db.watermark(conn, "energycharts")
         start = (wm - timedelta(days=settings.lookback_days)) if wm else now - timedelta(days=30)
         _load_energycharts_window(conn, start, now)
+
+    if "openmeteo" in sources:
+        _load_openmeteo(conn, now - timedelta(days=30), now)
 
     if "knmi" in sources:
         _load_knmi(conn, now - timedelta(days=400), now)
@@ -147,7 +176,7 @@ def main() -> None:
     )
     load.add_argument(
         "--sources",
-        default="entsoe,energycharts,knmi",
+        default="entsoe,energycharts,openmeteo",
         help="comma-separated subset of entsoe,energycharts,knmi",
     )
     load.add_argument(

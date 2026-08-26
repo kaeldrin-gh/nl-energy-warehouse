@@ -12,6 +12,7 @@ select
     price_diff_eur,
     price_source,
     has_weather_match,
+    weather_source,
     temp_c,
     wind_ms,
     radiation_jm2,

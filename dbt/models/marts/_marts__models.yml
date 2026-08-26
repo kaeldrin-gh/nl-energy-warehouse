@@ -12,6 +12,8 @@ models:
           - not_null
           - accepted_values:
               values: ['entsoe', 'energycharts']
+      - name: weather_source
+        description: "Which source supplied the weather: 'knmi' (station observations) or 'openmeteo' (ERA5 reanalysis fallback)."
       - name: price_eur_mwh
         tests: [not_null]
       - name: is_negative_price
