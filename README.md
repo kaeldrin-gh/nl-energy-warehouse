@@ -78,7 +78,7 @@ The mart models are incremental (`delete+insert`) with a 7-day reprocessing wind
 
 The mart models are incremental (`delete+insert`) with a 7-day reprocessing window that matches the ingestion revision lookback, so a retroactive source correction propagates from raw to marts on the next run without a full refresh.
 
-Everything runs locally on DuckDB. A Snowflake profile stub is included in `dbt/profiles.yml`; the models are plain SQL and port directly.
+Everything runs locally on DuckDB. A Snowflake profile stub is included in `dbt/profiles.yml`; the models are plain SQL and were written to port (validated on DuckDB only - no Snowflake run yet).
 
 ## Semantic layer
 
@@ -95,6 +95,18 @@ Three GitHub Actions workflows live in `.github/workflows/`:
 - **ingest** — daily cron running the incremental live ingest → `dbt build` → Parquet export, uploaded as workflow artifacts. Skips gracefully when the `ENTSOE_TOKEN` secret is absent, so forks stay green without credentials.
 
 Local pre-commit hooks (`ruff --fix`, `ruff-format`) mirror the CI lint job: `pre-commit install`.
+
+## When something breaks
+
+| Symptom | Where to look | Background |
+| --- | --- | --- |
+| CI red on `ci` workflow | Actions log → failing step (lint / pytest / dbt build / source freshness) | test scope in [Testing](#testing) |
+| Scheduled ingest yellow or failed | `ingest` workflow log → which source line | rate limits: INC-007, retired endpoints: INC-006 |
+| Cross-source alignment test fails | `dbt\tests\assert_cross_source_alignment.sql` output rows | INC-001, INC-003, INC-007 |
+| Prices look wrong for one hour | `raw.ingest_log` + `exports/report.html` pipeline-health table | INC-004, INC-007 |
+| Source freshness fails | `dbt source freshness` output: which table is stale | INC-006 (KNMI offline) |
+
+Data-quality philosophy: guardrails reject what is *provably* broken (uniqueness, technical price limits, alignment); anomalies within legal bounds surface as report sections and provenance flags, not failed builds.
 
 ## Reproducibility
 

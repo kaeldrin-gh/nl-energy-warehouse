@@ -47,3 +47,8 @@ jobs:
         run: dbt build --project-dir dbt --profiles-dir dbt
         env:
           DUCKDB_PATH: warehouse/energy.duckdb
+
+      - name: dbt source freshness
+        run: dbt source freshness --project-dir dbt --profiles-dir dbt
+        env:
+          DUCKDB_PATH: warehouse/energy.duckdb

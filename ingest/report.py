@@ -68,6 +68,17 @@ def generate() -> Path:
     conn = db.connect()
     daily = conn.execute("select * from main.mart_daily_summary order by local_date").fetchdf()
     hourly = conn.execute("select * from main.fct_hourly_price_weather order by hour_utc").fetchdf()
+    health = conn.execute("""
+        select
+            source,
+            max(run_at) as last_run,
+            max(window_end) as data_through,
+            sum(rows_written) as rows_total,
+            count(*) as runs
+        from raw.ingest_log
+        group by source
+        order by source
+    """).fetchdf()
     conn.close()
 
     corr = hourly[["price_eur_mwh", "temp_c", "wind_ms", "radiation_jm2"]].corr()
@@ -81,6 +92,11 @@ def generate() -> Path:
     stat_rows = "".join(
         f"<tr><td>{name}</td><td>{value:.3f}</td></tr>" for name, value in stats.items()
     )
+    health_rows = "".join(
+        f"<tr><td>{r.source}</td><td>{r.last_run}</td><td>{r.data_through}</td>"
+        f"<td>{r.rows_total:,}</td><td>{r.runs}</td></tr>"
+        for r in health.itertuples()
+    )
 
     html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>NL energy warehouse report</title>
@@ -93,6 +109,11 @@ img {{ max-width: 100%; }}
 <h1>NL energy warehouse report</h1>
 <h2>Headline stats</h2>
 <table><tr><th>metric</th><th>value</th></tr>{stat_rows}</table>
+<h2>Pipeline health</h2>
+<table>
+<tr><th>source</th><th>last run</th><th>data through</th><th>rows written (total)</th><th>runs</th></tr>
+{health_rows}
+</table>
 <h2>Daily price vs temperature</h2>
 <img src="data:image/png;base64,{_daily_price_vs_temp(daily)}">
 <h2>Hour-of-day price profile</h2>
