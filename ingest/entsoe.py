@@ -2,7 +2,8 @@ from datetime import datetime, timedelta, timezone
 from xml.etree import ElementTree
 
 import pandas as pd
-import requests
+
+from .http import get_with_retry
 
 BASE_URL = "https://web-api.tp.entsoe.eu/api"
 NS = {"m": "urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3"}
@@ -18,8 +19,7 @@ def fetch_day_ahead_prices(token: str, bidding_zone: str, start_utc: datetime, e
         "periodStart": start_utc.strftime("%Y%m%d%H%M"),
         "periodEnd": end_utc.strftime("%Y%m%d%H%M"),
     }
-    resp = requests.get(BASE_URL, params=params, timeout=timeout)
-    resp.raise_for_status()
+    resp = get_with_retry(BASE_URL, params=params, timeout=timeout)
     return parse_price_xml(resp.content)
 
 

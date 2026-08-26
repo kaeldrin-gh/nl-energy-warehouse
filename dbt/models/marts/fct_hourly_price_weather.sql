@@ -1,3 +1,9 @@
+{{ config(
+    materialized='incremental',
+    unique_key='hour_utc',
+    incremental_strategy='delete+insert'
+) }}
+
 select
     hour_utc,
     hour_local,
@@ -11,3 +17,7 @@ select
     hour_local_label,
     price_eur_mwh < 0 as is_negative_price
 from {{ ref('int_price_weather_hourly') }}
+
+{% if is_incremental() %}
+where hour_utc >= (select coalesce(max(hour_utc), timestamp '1900-01-01') from {{ this }}) - interval 7 day
+{% endif %}

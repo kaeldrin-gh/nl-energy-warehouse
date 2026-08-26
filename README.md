@@ -28,9 +28,9 @@ energy-charts (JS)─┘                                              │
                                                             BI / analysis
 ```
 
-- **Ingestion**: watermark + fixed lookback window, so revisions inside the window overwrite stale values (`INSERT OR REPLACE` on natural keys). Every run is logged to `raw.ingest_log`.
+- **Ingestion**: watermark + fixed lookback window, so revisions inside the window overwrite stale values (`INSERT OR REPLACE` on natural keys). Chunked backfill mode with retry and exponential backoff. Every run is logged to `raw.ingest_log`.
 - **Staging**: deduplication to latest revision, KNMI local-hour to UTC conversion with explicit DST semantics.
-- **Marts**: `fct_hourly_price_weather` (one row per UTC hour, price + weather + cross-source diff) and `mart_daily_summary`.
+- **Marts**: `fct_hourly_price_weather` (one row per UTC hour, price + weather + cross-source diff) and `mart_daily_summary`, both incremental with a revision-matched reprocessing window.
 - **Tests**: uniqueness, sanity bounds, cross-source price alignment, hour-continuity.
 
 ## Quickstart
@@ -44,8 +44,11 @@ dbt build --project-dir dbt --profiles-dir dbt
 To use real sources, copy `.env.example` to `.env`, add your free [ENTSO-E token](https://transparency.entsoe.eu/usrm/user/create) (KNMI key optional), then:
 
 ```bash
-python -m ingest.cli load
+python -m ingest.cli load                                   # incremental: new window + 7-day revision lookback
+python -m ingest.cli load --backfill --from 2024-01-01      # chunked historical load, retry with backoff
 ```
+
+The mart models are incremental (`delete+insert`) with a 7-day reprocessing window that matches the ingestion revision lookback, so a retroactive source correction propagates from raw to marts on the next run without a full refresh.
 
 Everything runs locally on DuckDB. A Snowflake profile stub is included in `dbt/profiles.yml`; the models are plain SQL and port directly.
 

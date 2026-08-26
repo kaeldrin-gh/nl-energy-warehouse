@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 
 import pandas as pd
-import requests
+
+from .http import get_with_retry
 
 BASE_URL = "https://api.energy-charts.info/price"
 
@@ -13,8 +14,7 @@ def fetch_day_ahead_prices(bidding_zone: str, start_utc: datetime, end_utc: date
         "start": int(start_utc.replace(tzinfo=timezone.utc).timestamp()),
         "end": int(end_utc.replace(tzinfo=timezone.utc).timestamp()),
     }
-    resp = requests.get(BASE_URL, params=params, timeout=timeout)
-    resp.raise_for_status()
+    resp = get_with_retry(BASE_URL, params=params, timeout=timeout)
     payload = resp.json()
 
     seconds = payload.get("unix_seconds", [])
