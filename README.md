@@ -48,15 +48,14 @@ python -m ingest.cli load                                   # incremental: new w
 python -m ingest.cli load --backfill --from 2024-01-01      # chunked historical load, retry with backoff
 ```
 
-No ENTSO-E token yet? energy-charts.info and KNMI need no credentials, so the pipeline runs on **real data** today:
+No ENTSO-E token yet? energy-charts.info needs no credentials, so the pipeline runs on **real prices** today:
 
 ```bash
-python -m ingest.cli load --sources knmi --backfill --from 2024-08-01
 python -m ingest.cli load --sources energycharts --backfill --from 2024-08-01
 dbt build --project-dir dbt --profiles-dir dbt --full-refresh
 ```
 
-The fact mart prefers ENTSO-E where both sources publish, and falls back to energy-charts for hours it does not, with a `price_source` provenance column so every number in BI is attributable. When the token arrives, the coalesce starts preferring ENTSO-E automatically and the cross-source alignment test takes over.
+The fact mart prefers ENTSO-E where both sources publish and falls back to energy-charts for hours it does not, with a `price_source` provenance column so every number in BI is attributable. When the token arrives, the coalesce starts preferring ENTSO-E automatically and the cross-source alignment test takes over. Live KNMI ingestion is temporarily offline - KNMI retired the legacy uurgeg file downloads mid-project ([INC-006](INCIDENTS.md)); weather arrives again after the Data Platform migration.
 
 The mart models are incremental (`delete+insert`) with a 7-day reprocessing window that matches the ingestion revision lookback, so a retroactive source correction propagates from raw to marts on the next run without a full refresh.
 
