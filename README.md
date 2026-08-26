@@ -19,6 +19,10 @@ Public energy data is a great engineering stress test:
 
 Each of these is handled explicitly and documented in [INCIDENTS.md](INCIDENTS.md) as a postmortem of the design decision it produced.
 
+## The answer
+
+**[analysis/findings.md](analysis/findings.md)** answers the question above from six years of real data: wind is the strongest weather driver (windy hours are 46% cheaper), negative prices are a weekend-solar phenomenon growing ~6× since 2022, and the cheapest segment of the Dutch electricity week is a windy Sunday midday — at roughly half of evening-peak price.
+
 ## Architecture
 
 ```

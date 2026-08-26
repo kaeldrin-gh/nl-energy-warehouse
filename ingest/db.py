@@ -31,6 +31,16 @@ CREATE TABLE IF NOT EXISTS raw.knmi_weather (
     PRIMARY KEY (station, interval_end_local)
 );
 
+CREATE TABLE IF NOT EXISTS raw.openmeteo_weather (
+    station INTEGER NOT NULL,
+    interval_end_local TIMESTAMP NOT NULL,
+    temp_c DOUBLE,
+    wind_ms DOUBLE,
+    radiation_jm2 DOUBLE,
+    fetched_at TIMESTAMP NOT NULL,
+    PRIMARY KEY (station, interval_end_local)
+);
+
 CREATE TABLE IF NOT EXISTS raw.ingest_log (
     source VARCHAR NOT NULL,
     run_at TIMESTAMP NOT NULL,

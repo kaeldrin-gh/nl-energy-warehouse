@@ -2,6 +2,7 @@
 
 If a column changes name or type, this fails before a dashboard silently breaks.
 """
+
 import os
 import subprocess
 import sys
@@ -23,6 +24,7 @@ EXPECTED = {
         "price_diff_eur": "float64",
         "price_source": "str",
         "has_weather_match": "bool",
+        "weather_source": "str",
         "temp_c": "float64",
         "wind_ms": "float64",
         "radiation_jm2": "float64",

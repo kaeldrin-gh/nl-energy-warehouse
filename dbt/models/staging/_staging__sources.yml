@@ -19,3 +19,5 @@ sources:
         # the Data Platform migration lands, so freshness checks are disabled
         # for this source only (an empty table is infinitely stale by definition).
         freshness: null
+      - name: openmeteo_weather
+        description: "Open-Meteo ERA5 reanalysis for the De Bilt grid cell (keyless interim weather source, INC-006). Same contract as knmi_weather; station=0 is the reanalysis sentinel."

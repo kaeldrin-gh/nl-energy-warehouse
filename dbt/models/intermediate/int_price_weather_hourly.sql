@@ -28,6 +28,7 @@ select
     p.price_diff_eur,
     p.price_source,
     k.interval_start_utc is not null as has_weather_match,
+    k.weather_source,
     k.temp_c,
     k.wind_ms,
     k.radiation_jm2,
@@ -35,5 +36,5 @@ select
 -- match), so cast to a nullable integer type explicitly for a stable BI contract.
     cast(k.hour_local_label as bigint) as hour_local_label
 from prices p
-left join {{ ref('stg_knmi__hourly_weather') }} k
+left join {{ ref('stg_weather__hourly') }} k
     on k.interval_start_utc = p.hour_utc
