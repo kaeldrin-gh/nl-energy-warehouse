@@ -1,0 +1,51 @@
+name: ingest
+
+on:
+  schedule:
+    # Daily after ENTSO-E publishes day-ahead prices for D+1 (~14:30 CET).
+    cron: "45 13 * * *"
+  workflow_dispatch:
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    env:
+      ENTSOE_TOKEN: ${{ secrets.ENTSOE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[dbt,test]"
+
+      - name: Skip gracefully without ENTSOE_TOKEN
+        if: env.ENTSOE_TOKEN == ''
+        run: |
+          echo "::notice::ENTSOE_TOKEN secret not set - live ingest disabled on this fork."
+          echo "Add the secret to enable the scheduled pipeline."
+
+      - name: Incremental ingest (7-day revision lookback)
+        if: env.ENTSOE_TOKEN != ''
+        run: python -m ingest.cli load
+
+      - name: dbt build
+        if: env.ENTSOE_TOKEN != ''
+        run: dbt build --project-dir dbt --profiles-dir dbt
+        env:
+          DUCKDB_PATH: warehouse/energy.duckdb
+
+      - name: Export marts
+        if: env.ENTSOE_TOKEN != ''
+        run: python -m ingest.cli export
+
+      - name: Upload mart exports
+        if: env.ENTSOE_TOKEN != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: mart-exports
+          path: exports/
+          retention-days: 7
