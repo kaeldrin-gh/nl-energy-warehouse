@@ -79,6 +79,18 @@ Three GitHub Actions workflows live in `.github/workflows/`:
 
 Local pre-commit hooks (`ruff --fix`, `ruff-format`) mirror the CI lint job: `pre-commit install`.
 
+## Reproducibility
+
+`requirements-lock.txt` pins the exact dependency set the CI suite runs against
+(`pip install -r requirements-lock.txt`). The Docker image wraps ingest + dbt:
+
+```bash
+docker build -t nl-energy-warehouse .
+docker run -v "$PWD/warehouse:/data" nl-energy-warehouse                 # sample load
+docker run --entrypoint dbt -v "$PWD/warehouse:/data" nl-energy-warehouse \
+    build --project-dir dbt --profiles-dir dbt                           # full pipeline on sample data
+```
+
 ## Testing
 
 ```bash
@@ -106,6 +118,8 @@ python -m pytest tests -v
 - [x] Incremental mart models with a revision-matched reprocessing window
 - [x] dbt semantic layer metric definitions, validated in CI
 - [x] Scheduled ingest workflow, docs site on GitHub Pages, pre-commit lint
+- [x] Dependency lockfile and Docker image
+- [ ] KNMI Data Platform migration for live weather ingestion ([INC-006](INCIDENTS.md))
 - [ ] README badges (CI status, Python version, code style)
 - [ ] Power BI dashboard pack (screenshots + PBIX)
 - [ ] ENTSO-E generation mix and cross-border flows
