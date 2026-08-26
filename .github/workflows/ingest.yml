@@ -3,7 +3,7 @@ name: ingest
 on:
   schedule:
     # Daily after ENTSO-E publishes day-ahead prices for D+1 (~14:30 CET).
-    cron: "45 13 * * *"
+    - cron: "45 13 * * *"
   workflow_dispatch:
 
 # Workflow-level env may read `secrets`; job/step-level may not.
