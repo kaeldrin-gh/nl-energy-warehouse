@@ -54,3 +54,55 @@ jobs:
         run: dbt source freshness --select source:raw.entsoe_prices source:raw.energycharts_prices --project-dir dbt --profiles-dir dbt
         env:
           DUCKDB_PATH: warehouse/energy.duckdb
+
+  validate-postgres:
+    # Second-engine proof: the same dbt project against PostgreSQL. Runs on a
+    # service container, so nothing needs to be installed locally. Dialect
+    # drift between DuckDB and Postgres fails here, not in production.
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: energy
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dbt-postgres and loader deps
+        # dbt-postgres pins its own compatible dbt-core, so it is installed as
+        # a standalone stack rather than on top of the DuckDB dependency set.
+        run: pip install "dbt-postgres" "sqlalchemy>=2" "pandas>=2" "numpy"
+
+      - name: Load sample raw data into Postgres
+        run: python scripts/load_postgres_sample.py
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGDATABASE: energy
+
+      - name: dbt build (Postgres)
+        run: dbt build --target postgres --project-dir dbt --profiles-dir dbt
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGDATABASE: energy

@@ -24,3 +24,19 @@ models:
     columns:
       - name: local_date
         tests: [unique, not_null]
+
+exposures:
+  - name: powerbi_nl_energy_dashboard
+    label: "NL Energy Dashboard (Power BI)"
+    type: dashboard
+    maturity: high
+    url: https://github.com/kaeldrin-gh/nl-energy-warehouse/tree/master/powerbi
+    description: >
+      Power BI dashboard built on the Parquet exports of these marts
+      (powerbi/nl-energy-dashboard.pbix). Rebuilt measures in
+      analysis/powerbi_measures.md; visuals mapped to bi_queries.sql.
+    depends_on:
+      - ref('fct_hourly_price_weather')
+      - ref('mart_daily_summary')
+    owner:
+      name: kaeldrin-gh
