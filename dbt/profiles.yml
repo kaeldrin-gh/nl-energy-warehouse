@@ -17,3 +17,13 @@ nl_energy:
       warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'TRANSFORM_XS') }}"
       schema: analytics
       threads: 4
+
+    postgres:
+      type: postgres
+      host: "{{ env_var('PGHOST', 'localhost') }}"
+      port: "{{ env_var('PGPORT', '5432') | int }}"
+      user: "{{ env_var('PGUSER', 'postgres') }}"
+      password: "{{ env_var('PGPASSWORD', 'postgres') }}"
+      dbname: "{{ env_var('PGDATABASE', 'energy') }}"
+      schema: public
+      threads: 4

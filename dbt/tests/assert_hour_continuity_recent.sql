@@ -1,3 +1,7 @@
+-- Hour-continuity guard for the recent window (last 14 days).
+-- Gap math uses epoch extraction instead of DuckDB's datediff() so the test
+-- runs on both engines; > 2 gaps fails the build (small gaps near DST or
+-- publication edges are tolerated and surfaced in the report instead).
 with bounds as (
     select max(hour_utc) as max_hour
     from {{ ref('fct_hourly_price_weather') }}
@@ -15,10 +19,10 @@ gaps as (
     select
         hour_utc,
         prev_hour,
-        datediff('hour', prev_hour, hour_utc) as gap_hours
+        cast(extract(epoch from (hour_utc - prev_hour)) / 3600 as bigint) as gap_hours
     from hours
     where prev_hour is not null
-      and datediff('hour', prev_hour, hour_utc) > 1
+      and extract(epoch from (hour_utc - prev_hour)) > 3600
 ),
 
 total as (

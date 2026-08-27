@@ -8,6 +8,15 @@ with converted as (
         radiation_jm2,
         fetched_at
     from {{ source('raw', 'knmi_weather') }}
+),
+
+ranked as (
+    -- Portable latest-revision dedup: window functions cannot live in WHERE,
+    -- and QUALIFY is DuckDB/Snowflake-only.
+    select
+        *,
+        row_number() over (partition by station, interval_end_utc order by fetched_at desc) as rn
+    from converted
 )
 
 select
@@ -20,5 +29,5 @@ select
     wind_ms,
     radiation_jm2,
     fetched_at as source_fetched_at
-from converted
-qualify row_number() over (partition by station, interval_end_utc order by fetched_at desc) = 1
+from ranked
+where rn = 1

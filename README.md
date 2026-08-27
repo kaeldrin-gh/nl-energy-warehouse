@@ -91,9 +91,7 @@ Live status: **ENTSO-E is the primary source** (token configured via `.env` / th
 
 The mart models are incremental (`delete+insert`) with a 7-day reprocessing window that matches the ingestion revision lookback, so a retroactive source correction propagates from raw to marts on the next run without a full refresh.
 
-The mart models are incremental (`delete+insert`) with a 7-day reprocessing window that matches the ingestion revision lookback, so a retroactive source correction propagates from raw to marts on the next run without a full refresh.
-
-Everything runs locally on DuckDB. A Snowflake profile stub is included in `dbt/profiles.yml`; the models are plain SQL and were written to port (validated on DuckDB only - no Snowflake run yet).
+Everything runs locally on DuckDB. The same dbt project is also validated against PostgreSQL in CI (see the `validate-postgres` job) — plain SQL, two engines. A Snowflake profile stub is included; porting was designed for but not yet executed on Snowflake.
 
 ## Semantic layer
 
@@ -106,7 +104,7 @@ Everything runs locally on DuckDB. A Snowflake profile stub is included in `dbt/
 Three GitHub Actions workflows live in `.github/workflows/`:
 
 - **ci** — ruff lint + format check, the full pytest suite (including the DST integration tests that run complete dbt builds), then a sample-data `dbt build`. Runs on every push and PR.
-- **docs** — regenerates the dbt documentation site from seeded sample data and deploys it to GitHub Pages.
+- **docs** — regenerates the dbt documentation site from seeded sample data and deploys it to **GitHub Pages**: [kaeldrin-gh.github.io/nl-energy-warehouse](https://kaeldrin-gh.github.io/nl-energy-warehouse/) — a live, generated data catalog with lineage, column docs and test coverage.
 - **ingest** — daily cron running the incremental live ingest → `dbt build` → Parquet export, uploaded as workflow artifacts. Skips gracefully when the `ENTSOE_TOKEN` secret is absent, so forks stay green without credentials.
 
 Local pre-commit hooks (`ruff --fix`, `ruff-format`) mirror the CI lint job: `pre-commit install`.

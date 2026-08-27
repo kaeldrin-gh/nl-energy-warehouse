@@ -1,0 +1,25 @@
+unit_tests:
+  - name: int_price_weather_hourly_fallback
+    description: >
+      Provenance and reconciliation semantics of the price union:
+      ENTSO-E is authoritative, energy-charts only fills unpublished hours,
+      and the cross-source diff exists only when a reconciliation is real.
+    model: int_price_weather_hourly
+    given:
+      - input: ref('stg_entsoe__day_ahead_prices')
+        rows:
+          - {hour_utc: 2026-08-24 10:00:00, price_eur_mwh: 100.0, source_fetched_at: 2026-08-24 12:00:00, hour_local: 2026-08-24 12:00:00}
+          - {hour_utc: 2026-08-24 11:00:00, price_eur_mwh: 90.0, source_fetched_at: 2026-08-24 12:00:00, hour_local: 2026-08-24 13:00:00}
+      - input: ref('stg_energycharts__day_ahead_prices')
+        rows:
+          - {hour_utc: 2026-08-24 10:00:00, price_eur_mwh: 101.5, source_fetched_at: 2026-08-24 12:00:00}
+          - {hour_utc: 2026-08-24 11:00:00, price_eur_mwh: 89.0, source_fetched_at: 2026-08-24 12:00:00}
+          - {hour_utc: 2026-08-24 12:00:00, price_eur_mwh: 70.0, source_fetched_at: 2026-08-24 12:00:00}
+      - input: ref('stg_weather__hourly')
+        rows:
+          - {interval_start_utc: 2026-08-24 10:00:00, hour_local_label: 12, temp_c: 18.0, wind_ms: 5.0, radiation_jm2: 1800000.0, weather_source: openmeteo}
+    expect:
+      rows:
+        - {hour_utc: 2026-08-24 10:00:00, price_source: entsoe, price_eur_mwh: 100.0, price_eur_mwh_cross_source: 101.5, price_diff_eur: 1.5, has_weather_match: true, weather_source: openmeteo, temp_c: 18.0}
+        - {hour_utc: 2026-08-24 11:00:00, price_source: entsoe, price_eur_mwh: 90.0, price_eur_mwh_cross_source: 89.0, price_diff_eur: 1.0, has_weather_match: false, weather_source: null, temp_c: null}
+        - {hour_utc: 2026-08-24 12:00:00, price_source: energycharts, price_eur_mwh: 70.0, price_eur_mwh_cross_source: null, price_diff_eur: null, has_weather_match: false, weather_source: null, temp_c: null}
