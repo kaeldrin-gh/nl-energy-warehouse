@@ -19,9 +19,20 @@ Public energy data is a great engineering stress test:
 
 Each of these is handled explicitly and documented in [INCIDENTS.md](INCIDENTS.md) as a postmortem of the design decision it produced.
 
-## The answer
+## The answer, in four numbers
 
-**[analysis/findings.md](analysis/findings.md)** answers the question above from six years of real data: wind is the strongest weather driver (windy hours are 46% cheaper), negative prices are a weekend-solar phenomenon growing ~6× since 2022, and the cheapest segment of the Dutch electricity week is a windy Sunday midday — at roughly half of evening-peak price.
+Computed from this repo's own marts: **58,319 delivery hours** (Jan 2020 → Aug 2026), ENTSO-E primary with an energy-charts cross-check, Open-Meteo weather alongside. Full methodology and caveats in [analysis/findings.md](analysis/findings.md).
+
+| | |
+| --- | --- |
+| **€147 vs €72** | evening peak vs midday trough — the duck curve, priced |
+| **−46%** | what windy hours (≥ 6 m/s) cost on average versus calm ones |
+| **97 → 584** | negative-price hours per year (2020 → 2025) — solar is rewriting the price floor |
+| **22.5% vs 6.7%** | share of midday hours below zero on weekends versus weekdays |
+
+![Duck curve and negative-price explosion](docs/images/05_findings.png)
+
+One actionable conclusion: **a windy weekend midday is the cheapest segment of the Dutch electricity week**, running at roughly half the price of an average weekday evening.
 
 ## Architecture
 
