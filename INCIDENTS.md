@@ -19,6 +19,29 @@ The first live ENTSO-E days exposed two failure modes in the wild, both caught b
 
 ---
 
+## INC-008: The project that only spoke DuckDB
+
+**Category**: portability / dialect drift
+
+The README claimed "the models are plain SQL and were written to port." The first CI run against PostgreSQL disagreed - quietly, at compile time, before any data moved. Four idioms that DuckDB accepts without complaint:
+
+1. `qualify row_number() over (...) = 1` for latest-revision dedup - Postgres has no `QUALIFY` clause.
+2. Unquoted interval literals (`interval 7 day`) - Postgres requires `interval '7 day'`.
+3. `datediff('hour', a, b)` - a DuckDB function; Postgres offers epoch extraction.
+4. `round(double precision, 2)` - Postgres only defines two-argument `round` for `numeric`.
+
+None of these produce wrong data on DuckDB; all four produce a broken project everywhere else. "Written to port" is a runtime property, not a hope.
+
+**Detection**: a `validate-postgres` CI job - Postgres 17 as a service container, seeded with the same deterministic sample raw data, running the identical dbt project with `--target postgres`. Every dialect failure surfaced as a compile error at 13:24 UTC on the first push, not during a hypothetical Snowflake migration two years later.
+
+**Design response**:
+- Portable idioms adopted project-wide: subquery dedup instead of `QUALIFY`, quoted interval literals, epoch-based gap math.
+- `round_numeric` adapter-dispatch macro: model SQL stays dialect-free; the shim maps to each engine's two-argument `round`.
+- The validation gate is permanent: any future model change that quietly leans on a DuckDB-ism fails `validate-postgres` in CI.
+- Timezone conversion (`timezone('Europe/Amsterdam', ...)`) survived both engines unchanged - the one place we got lucky, now documented rather than assumed.
+
+---
+
 ## INC-005: The sanity test that rejected reality
 
 **Category**: quality / test calibration

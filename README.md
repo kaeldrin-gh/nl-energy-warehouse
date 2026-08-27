@@ -151,6 +151,7 @@ python -m pytest tests -v
 - Timezone and DST handling as an explicit, tested modeling decision
 - Cross-source reconciliation with an automated alignment test
 - Source failover with provenance tracking when the authoritative source is unavailable
+- One dbt project, two engines: validated against DuckDB and PostgreSQL on every push
 - dbt layering (staging / intermediate / marts) with tests wired into CI
 - dbt Semantic Layer metric definitions (YAML) over the fact mart, validated on every build
 - Deterministic sample mode so the whole pipeline runs without credentials
