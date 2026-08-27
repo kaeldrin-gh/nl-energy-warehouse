@@ -17,6 +17,6 @@ select
 from {{ ref('fct_hourly_price_weather') }}
 
 {% if is_incremental() %}
-where cast(hour_local as date) >= (select coalesce(max(local_date), date '1900-01-01') from {{ this }}) - interval 7 day
+where cast(hour_local as date) >= (select coalesce(max(local_date), date '1900-01-01') from {{ this }}) - interval '7 day'
 {% endif %}
 group by 1

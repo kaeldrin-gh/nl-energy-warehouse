@@ -23,7 +23,7 @@ select
     station,
     interval_end_local,
     interval_end_utc,
-    interval_end_utc - interval 1 hour as interval_start_utc,
+    interval_end_utc - interval '1 hour' as interval_start_utc,
     extract(hour from interval_end_local) as hour_local_label,
     temp_c,
     wind_ms,
