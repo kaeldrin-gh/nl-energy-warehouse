@@ -21,5 +21,5 @@ select
 from {{ ref('int_price_weather_hourly') }}
 
 {% if is_incremental() %}
-where hour_utc >= (select coalesce(max(hour_utc), timestamp '1900-01-01') from {{ this }}) - interval 7 day
+where hour_utc >= (select coalesce(max(hour_utc), timestamp '1900-01-01') from {{ this }}) - interval '7 day'
 {% endif %}

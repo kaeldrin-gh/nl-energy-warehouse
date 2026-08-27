@@ -12,7 +12,7 @@ hours as (
         f.hour_utc,
         lag(f.hour_utc) over (order by f.hour_utc) as prev_hour
     from {{ ref('fct_hourly_price_weather') }} f, bounds b
-    where f.hour_utc >= b.max_hour - interval 14 day
+    where f.hour_utc >= b.max_hour - interval '14 day'
 ),
 
 gaps as (
