@@ -190,9 +190,10 @@ def run_bi_query(name: str | None) -> None:
 def refresh() -> None:
     """One command from stale to fresh: incremental load -> dbt build -> export -> report."""
     steps = (
-        ("1/4 incremental load", lambda: load_live(
-            ["entsoe", "energycharts", "openmeteo"], None, None
-        )),
+        (
+            "1/4 incremental load",
+            lambda: load_live(["entsoe", "energycharts", "openmeteo"], None, None),
+        ),
         ("2/4 dbt build", _run_dbt_build),
         ("3/4 export parquet", export_marts),
         ("4/4 report", lambda: print(f"report written to {report.generate()}")),
