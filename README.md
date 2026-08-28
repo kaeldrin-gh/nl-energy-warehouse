@@ -9,6 +9,8 @@ A production-style data warehouse for Dutch electricity prices and weather, buil
 
 Day-ahead prices from the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu/), hourly weather from KNMI station data (currently served by a keyless [Open-Meteo](https://open-meteo.com/) ERA5 interim after KNMI retired its bulk downloads), cross-checked against [energy-charts.info](https://energy-charts.info/). Ingested idempotently with revision-aware upserts, modeled in dbt, tested in CI, and served as clean marts for BI.
 
+> **New to data engineering?** [PROJECT_EXPLAINED.md](PROJECT_EXPLAINED.md) walks the entire project in plain language — every tool explained, no prior knowledge assumed.
+
 ## Why this repo exists
 
 Public energy data is a great engineering stress test:
