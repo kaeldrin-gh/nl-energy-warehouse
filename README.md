@@ -84,6 +84,13 @@ python -m ingest.cli load --sample          # 90 days of seeded sample data, no 
 dbt build --project-dir dbt --profiles-dir dbt
 ```
 
+Already set up and just want fresh numbers? One command runs the whole chain — incremental live load → `dbt build` → Parquet export → report:
+
+```bash
+python -m ingest.cli refresh
+python -m ingest.cli bi headline     # then ask it anything
+```
+
 To use real sources, copy `.env.example` to `.env`, add your free [ENTSO-E token](https://transparency.entsoe.eu/usrm/user/create) (KNMI key optional), then:
 
 ```bash
