@@ -3,17 +3,10 @@
 If a column changes name or type, this fails before a dashboard silently breaks.
 """
 
-import os
-import subprocess
-import sys
-
 import pandas as pd
 import pytest
-from conftest import REPO_ROOT
 
-sys.path.insert(0, str(REPO_ROOT))
-
-from ingest import cli, db, sample  # noqa: E402
+from ingest import cli  # noqa: E402
 
 EXPECTED = {
     "fct_hourly_price_weather": {
@@ -46,28 +39,9 @@ EXPECTED = {
 
 
 @pytest.fixture()
-def sample_export(tmp_path):
-    duckdb_path = tmp_path / "contract.duckdb"
-    frames = sample.generate(sample_days=30)
-    conn = db.connect(duckdb_path)
-    for table, frame in frames.items():
-        db.upsert(conn, table, frame)
-    conn.close()
-
-    env = os.environ.copy()
-    env["DUCKDB_PATH"] = str(duckdb_path)
-    result = subprocess.run(
-        ["dbt", "build", "--project-dir", "dbt", "--profiles-dir", "dbt"],
-        cwd=REPO_ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=300,
-    )
-    assert result.returncode == 0, f"dbt build failed:\n{result.stdout[-2000:]}"
-
+def sample_export(tmp_path, built_sample_warehouse):
     out = tmp_path / "exports"
-    cli.export_marts(out, duckdb_path)
+    cli.export_marts(out, built_sample_warehouse)
     return out
 
 
