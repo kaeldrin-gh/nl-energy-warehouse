@@ -3,7 +3,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import db, energycharts, entsoe, knmi, openmeteo, report, sample
+from . import bi_queries, db, energycharts, entsoe, knmi, openmeteo, report, sample
 from .config import settings
 
 BACKFILL_CHUNK_DAYS = 30
@@ -164,6 +164,26 @@ def export_marts(out_dir: Path | None = None, duckdb_path: Path | None = None) -
     conn.close()
 
 
+def run_bi_query(name: str | None) -> None:
+    blocks = bi_queries.load_blocks(settings.root / "analysis" / "bi_queries.sql")
+    if name is None:
+        print("available queries (python -m ingest.cli bi <key>):")
+        for block in blocks:
+            print(f"  {block.key:<10} {block.title}")
+        return
+    block = bi_queries.find_block(blocks, name)
+    if block is None:
+        print(f"no query matches '{name}'. available keys:")
+        for b in blocks:
+            print(f"  {b.key:<10} {b.title}")
+        raise SystemExit(1)
+    conn = db.connect()
+    df = conn.execute(block.sql).fetchdf()
+    conn.close()
+    print(f"== {block.title}")
+    print(df.to_string(index=False))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Load raw data into the DuckDB warehouse")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -177,7 +197,7 @@ def main() -> None:
     load.add_argument(
         "--sources",
         default="entsoe,energycharts,openmeteo",
-        help="comma-separated subset of entsoe,energycharts,knmi",
+        help="comma-separated subset of entsoe,energycharts,openmeteo,knmi",
     )
     load.add_argument(
         "--backfill", action="store_true", help="chunked historical load; requires --from"
@@ -191,6 +211,11 @@ def main() -> None:
 
     sub.add_parser("export", help="export mart tables to exports/ as Parquet for BI tools")
     sub.add_parser("report", help="generate exports/report.html from the marts")
+
+    bi = sub.add_parser("bi", help="run analysis queries from analysis/bi_queries.sql")
+    bi.add_argument(
+        "name", nargs="?", default=None, help="query key (e.g. V1, headline); omit to list all"
+    )
 
     args = parser.parse_args()
 
@@ -211,6 +236,8 @@ def main() -> None:
         export_marts()
     elif args.command == "report":
         print(f"report written to {report.generate()}")
+    elif args.command == "bi":
+        run_bi_query(args.name)
 
 
 if __name__ == "__main__":

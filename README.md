@@ -34,6 +34,8 @@ Computed from this repo's own marts: **58,319 delivery hours** (Jan 2020 → Aug
 
 One actionable conclusion: **a windy weekend midday is the cheapest segment of the Dutch electricity week**, running at roughly half the price of an average weekday evening.
 
+Every number here is re-runnable in one command: `python -m ingest.cli bi headline` (or `v1`–`v5`) executes the SQL from `bi_queries.sql` against the warehouse — the README's figures are always one query away from being current.
+
 ## Architecture
 
 ```
