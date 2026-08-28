@@ -1,4 +1,7 @@
 import argparse
+import os
+import shutil
+import subprocess
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -184,6 +187,43 @@ def run_bi_query(name: str | None) -> None:
     print(df.to_string(index=False))
 
 
+def refresh() -> None:
+    """One command from stale to fresh: incremental load -> dbt build -> export -> report."""
+    steps = (
+        ("1/4 incremental load", lambda: load_live(
+            ["entsoe", "energycharts", "openmeteo"], None, None
+        )),
+        ("2/4 dbt build", _run_dbt_build),
+        ("3/4 export parquet", export_marts),
+        ("4/4 report", lambda: print(f"report written to {report.generate()}")),
+    )
+    for label, step in steps:
+        print(f"== {label}")
+        step()
+
+
+def _run_dbt_build() -> None:
+    dbt = shutil.which("dbt")
+    if dbt is None:
+        raise SystemExit("dbt executable not found on PATH")
+    env = os.environ.copy()
+    env["DUCKDB_PATH"] = str(settings.duckdb_path)
+    result = subprocess.run(
+        ["dbt", "build", "--project-dir", "dbt", "--profiles-dir", "dbt"],
+        cwd=settings.root,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    if result.returncode != 0:
+        print(result.stdout[-2000:])
+        raise SystemExit(f"dbt build failed (exit {result.returncode})")
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
+    summary = [line for line in lines if "Done." in line]
+    print(summary[-1] if summary else lines[-1])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Load raw data into the DuckDB warehouse")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -211,6 +251,10 @@ def main() -> None:
 
     sub.add_parser("export", help="export mart tables to exports/ as Parquet for BI tools")
     sub.add_parser("report", help="generate exports/report.html from the marts")
+    sub.add_parser(
+        "refresh",
+        help="one command: incremental live load -> dbt build -> export -> report",
+    )
 
     bi = sub.add_parser("bi", help="run analysis queries from analysis/bi_queries.sql")
     bi.add_argument(
@@ -238,6 +282,8 @@ def main() -> None:
         print(f"report written to {report.generate()}")
     elif args.command == "bi":
         run_bi_query(args.name)
+    elif args.command == "refresh":
+        refresh()
 
 
 if __name__ == "__main__":
