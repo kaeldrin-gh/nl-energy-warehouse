@@ -7,7 +7,7 @@
 
 A production-style data warehouse for Dutch electricity prices and weather, built to answer one question: **what actually drives the hourly power price in the Netherlands, and when is it cheap?**
 
-Day-ahead prices from the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu/), hourly weather from the [KNMI](https://www.knmi.nl/nederland-nu/klimatologie/uurgegeven), cross-checked against [energy-charts.info](https://energy-charts.info/). Ingested idempotently with revision-aware upserts, modeled in dbt, tested in CI, and served as clean marts for BI.
+Day-ahead prices from the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu/), hourly weather from KNMI station data (currently served by a keyless [Open-Meteo](https://open-meteo.com/) ERA5 interim after KNMI retired its bulk downloads), cross-checked against [energy-charts.info](https://energy-charts.info/). Ingested idempotently with revision-aware upserts, modeled in dbt, tested in CI, and served as clean marts for BI.
 
 ## Why this repo exists
 
@@ -37,25 +37,27 @@ One actionable conclusion: **a windy weekend midday is the cheapest segment of t
 ## Architecture
 
 ```
-ENTSO-E (XML API) ─┐
-KNMI (hourly CSV) ─┼─> ingest/ (Python, idempotent upserts) ─> DuckDB raw
-energy-charts (JS)─┘                                              │
-                                                                  v
-                                              dbt: staging -> intermediate -> marts
-                                                                  │
-                                                     tests + CI (GitHub Actions)
-                                                                  │
-                                                            BI / analysis
+ENTSO-E      (XML API)  ─┐
+energy-charts (JSON)    ─┼─> ingest/ (Python, idempotent upserts) ─> DuckDB raw
+Open-Meteo    (ERA5)    ─┘         (KNMI station ingester ready; its legacy
+                                   endpoint was retired mid-project: INC-006)
+                                                       │
+                                                       v
+                                   dbt: staging -> intermediate -> marts
+                                                       │
+                                       tests + CI (GitHub Actions)
+                                                       │
+                                   BI, report.html, analysis/findings.md
 ```
 
 - **Ingestion**: watermark + fixed lookback window, so revisions inside the window overwrite stale values (`INSERT OR REPLACE` on natural keys). Chunked backfill mode with retry and exponential backoff. Every run is logged to `raw.ingest_log`.
-- **Staging**: deduplication to latest revision, KNMI local-hour to UTC conversion with explicit DST semantics.
-- **Marts**: `fct_hourly_price_weather` (one row per UTC hour, price + weather + cross-source diff, `price_source` provenance flag) and `mart_daily_summary`, both incremental with a revision-matched reprocessing window. ENTSO-E is authoritative; energy-charts fills unpublished hours as a flagged fallback.
-- **Tests**: uniqueness, sanity bounds, cross-source price alignment, hour-continuity.
+- **Staging**: deduplication to latest revision, weather local-hour to UTC conversion with explicit DST semantics, and a unified weather feed that prefers KNMI station observations over the Open-Meteo reanalysis.
+- **Marts**: `fct_hourly_price_weather` (one row per UTC hour, price + weather + cross-source diff, `price_source` / `weather_source` provenance flags) and `mart_daily_summary`, both incremental with a revision-matched reprocessing window. ENTSO-E is authoritative; energy-charts fills unpublished hours as a flagged fallback.
+- **Tests**: uniqueness, sanity bounds set to exchange limits, cross-source price alignment, hour-continuity, provenance consistency, plus a native dbt unit test proving the fallback semantics with mocked inputs.
 
 ## What it looks like
 
-Two years of **real** Dutch day-ahead prices - ENTSO-E primary, energy-charts.info cross-check and gap-filler - flowing through the dbt marts to Parquet and Power BI. Every visual below is backed by a query block in [`analysis/bi_queries.sql`](analysis/bi_queries.sql); measures live in [`analysis/powerbi_measures.md`](analysis/powerbi_measures.md). The Power BI file itself is in the repo: [`powerbi/nl-energy-dashboard.pbix`](powerbi/nl-energy-dashboard.pbix).
+Six and a half years of **real** Dutch day-ahead prices - ENTSO-E primary, energy-charts.info cross-check and gap-filler - flowing through the dbt marts to Parquet and Power BI. Every visual below is backed by a query block in [`analysis/bi_queries.sql`](analysis/bi_queries.sql); measures live in [`analysis/powerbi_measures.md`](analysis/powerbi_measures.md). The Power BI file itself is in the repo: [`powerbi/nl-energy-dashboard.pbix`](powerbi/nl-energy-dashboard.pbix).
 
 ![Dashboard overview](docs/images/04_overview.png)
 *Full report page: headline stats, daily price development, hour-of-day profile, negative-price analysis.*
@@ -87,7 +89,7 @@ python -m ingest.cli load                                   # incremental: new w
 python -m ingest.cli load --backfill --from 2024-01-01      # chunked historical load, retry with backoff
 ```
 
-Live status: **ENTSO-E is the primary source** (token configured via `.env` / the `ENTSOE_TOKEN` secret; the daily cron ingests incrementally with a 7-day revision lookback). energy-charts.info covers the ~1.5% of hours where ENTSO-E's publication is incomplete, with a `price_source` provenance column so every number in BI is attributable, and `assert_cross_source_alignment` holds both publishers to a EUR 2/MWh agreement on every hour where they overlap. Live KNMI ingestion is temporarily offline - KNMI retired the legacy uurgeg file downloads mid-project ([INC-006](INCIDENTS.md)); weather arrives again after the Data Platform migration.
+Live status: a scheduled cron keeps this repo fed from the live APIs. **ENTSO-E is the primary source**; energy-charts.info fills the ~1.5% of hours where ENTSO-E's publication is incomplete — a `price_source` column records who supplied every number in BI — and `assert_cross_source_alignment` holds the two publishers to a €2/MWh agreement wherever they overlap. Weather currently arrives from Open-Meteo's keyless ERA5 archive; live KNMI ingestion is offline because KNMI retired its legacy uurgeg downloads mid-project ([INC-006](INCIDENTS.md)).
 
 The mart models are incremental (`delete+insert`) with a 7-day reprocessing window that matches the ingestion revision lookback, so a retroactive source correction propagates from raw to marts on the next run without a full refresh.
 
@@ -103,7 +105,7 @@ Everything runs locally on DuckDB. The same dbt project is also validated agains
 
 Three GitHub Actions workflows live in `.github/workflows/`:
 
-- **ci** — ruff lint + format check, the full pytest suite (including the DST integration tests that run complete dbt builds), then a sample-data `dbt build`. Runs on every push and PR.
+- **ci** — three jobs: ruff lint, the full pytest suite (including the DST integration tests that run complete dbt builds) plus a sample-data `dbt build` and source-freshness check, and `validate-postgres`: the identical dbt project built against PostgreSQL 17 in a service container. Runs on every push and PR.
 - **docs** — regenerates the dbt documentation site from seeded sample data and deploys it to **GitHub Pages**: [kaeldrin-gh.github.io/nl-energy-warehouse](https://kaeldrin-gh.github.io/nl-energy-warehouse/) — a live, generated data catalog with lineage, column docs and test coverage.
 - **ingest** — daily cron running the incremental live ingest → `dbt build` → Parquet export, uploaded as workflow artifacts. Skips gracefully when the `ENTSOE_TOKEN` secret is absent, so forks stay green without credentials.
 
@@ -155,6 +157,7 @@ python -m pytest tests -v
 - dbt layering (staging / intermediate / marts) with tests wired into CI
 - dbt Semantic Layer metric definitions (YAML) over the fact mart, validated on every build
 - Deterministic sample mode so the whole pipeline runs without credentials
+- An analysis answer ([analysis/findings.md](analysis/findings.md)) with every number computed from the marts — insight, not just plumbing
 
 ## Roadmap
 
