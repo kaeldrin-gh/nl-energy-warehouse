@@ -13,3 +13,4 @@ exports/
 *.duckdb
 *.duckdb.wal
 .DS_Store
+INTERVIEW_NOTES.md
