@@ -33,8 +33,10 @@ def load_blocks(path: Path) -> list[BiQuery]:
         if sql_lines and title_lines:
             first = title_lines[0].strip()
             words = first.split()
-            key = words[0].lower().rstrip(":") if words and words[0].upper().startswith("V") else (
-                words[0].lower() if words else f"query{len(blocks) + 1}"
+            key = (
+                words[0].lower().rstrip(":")
+                if words and words[0].upper().startswith("V")
+                else (words[0].lower() if words else f"query{len(blocks) + 1}")
             )
             blocks.append(BiQuery(key=key, title=first, sql="\n".join(sql_lines).strip()))
         title_lines, sql_lines, in_header = [], [], False

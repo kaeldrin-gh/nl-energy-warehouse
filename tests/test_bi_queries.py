@@ -1,4 +1,3 @@
-
 from conftest import REPO_ROOT
 
 from ingest import bi_queries
