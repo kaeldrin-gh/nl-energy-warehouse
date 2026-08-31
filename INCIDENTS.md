@@ -35,6 +35,12 @@ wasn't.
 worked exactly as designed). The gap: a partial batch is strictly better than
 no batch, and the pipeline threw the partial away.
 
+**Root cause (confirmed)**: ENTSO-E's own 503 holding page states "Scheduled
+maintenance is currently underway" - served identically to home and cloud
+networks, with the public website still up. A planned platform maintenance
+window, not rate limiting, not authentication, not our code. The batch that
+triggered this incident simply had the bad luck of running during it.
+
 **Design response**:
 - **Per-source isolation** in the incremental load: each source is wrapped so
   its failure is recorded, printed, and skipped - never allowed to cancel the
