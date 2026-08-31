@@ -127,7 +127,7 @@ Local pre-commit hooks (`ruff --fix`, `ruff-format`) mirror the CI lint job: `pr
 | Symptom | Where to look | Background |
 | --- | --- | --- |
 | CI red on `ci` workflow | Actions log → failing step (lint / pytest / dbt build / source freshness) | test scope in [Testing](#testing) |
-| Scheduled ingest yellow or failed | `ingest` workflow log → which source line | rate limits: INC-007, retired endpoints: INC-006 |
+| Scheduled ingest yellow or failed | `ingest` workflow log → which source line | rate limits: INC-007, retired endpoints: INC-006, upstream 503: INC-009 |
 | Cross-source alignment test fails | `dbt\tests\assert_cross_source_alignment.sql` output rows | INC-001, INC-003, INC-007 |
 | Prices look wrong for one hour | `raw.ingest_log` + `exports/report.html` pipeline-health table | INC-004, INC-007 |
 | Source freshness fails | `dbt source freshness` output: which table is stale | INC-006 (KNMI offline) |

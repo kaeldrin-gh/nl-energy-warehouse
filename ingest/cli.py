@@ -2,6 +2,7 @@ import argparse
 import os
 import shutil
 import subprocess
+import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -87,9 +88,17 @@ def _load_knmi(conn, start: datetime, end: datetime) -> None:
 
 def load_live(
     sources: list[str], backfill_start: datetime | None = None, backfill_end: datetime | None = None
-) -> None:
+) -> list[str]:
+    """Load the requested live sources. Returns the names of sources that failed.
+
+    Sources are isolated: one source being down (503s, timeouts) must not stop
+    the others, and must not prevent the downstream build/export from shipping
+    whatever data *was* available (provenance flags mark the gaps). Callers
+    decide whether failures are fatal - the cron treats them as such.
+    """
     conn = db.connect()
     now = datetime.utcnow()
+    failures: list[str] = []
 
     if backfill_start is not None:
         end = backfill_end or now
@@ -131,24 +140,47 @@ def load_live(
         if not settings.entsoe_token:
             print("entsoe: skipped, ENTSOE_TOKEN not set")
         else:
-            wm = db.watermark(conn, "entsoe")
+            try:
+                wm = db.watermark(conn, "entsoe")
+                start = (
+                    (wm - timedelta(days=settings.lookback_days))
+                    if wm
+                    else now - timedelta(days=30)
+                )
+                _load_entsoe_window(conn, start, now)
+            except Exception as error:  # isolate: one dead source must not kill the batch
+                failures.append("entsoe")
+                print(f"entsoe: FAILED ({error}) - continuing with remaining sources")
+
+    if "energycharts" in sources:
+        try:
+            wm = db.watermark(conn, "energycharts")
             start = (
                 (wm - timedelta(days=settings.lookback_days)) if wm else now - timedelta(days=30)
             )
-            _load_entsoe_window(conn, start, now)
-
-    if "energycharts" in sources:
-        wm = db.watermark(conn, "energycharts")
-        start = (wm - timedelta(days=settings.lookback_days)) if wm else now - timedelta(days=30)
-        _load_energycharts_window(conn, start, now)
+            _load_energycharts_window(conn, start, now)
+        except Exception as error:  # isolate: one dead source must not kill the batch
+            failures.append("energycharts")
+            print(f"energycharts: FAILED ({error}) - continuing with remaining sources")
 
     if "openmeteo" in sources:
-        _load_openmeteo(conn, now - timedelta(days=30), now)
+        try:
+            _load_openmeteo(conn, now - timedelta(days=30), now)
+        except Exception as error:  # isolate: one dead source must not kill the batch
+            failures.append("openmeteo")
+            print(f"openmeteo: FAILED ({error}) - continuing with remaining sources")
 
     if "knmi" in sources:
-        _load_knmi(conn, now - timedelta(days=400), now)
+        try:
+            _load_knmi(conn, now - timedelta(days=400), now)
+        except Exception as error:  # isolate: one dead source must not kill the batch
+            failures.append("knmi")
+            print(f"knmi: FAILED ({error}) - continuing with remaining sources")
 
     conn.close()
+    if failures:
+        print(f"load finished with failures: {', '.join(failures)}")
+    return failures
 
 
 def export_marts(out_dir: Path | None = None, duckdb_path: Path | None = None) -> None:
@@ -189,18 +221,19 @@ def run_bi_query(name: str | None) -> None:
 
 def refresh() -> None:
     """One command from stale to fresh: incremental load -> dbt build -> export -> report."""
-    steps = (
-        (
-            "1/4 incremental load",
-            lambda: load_live(["entsoe", "energycharts", "openmeteo"], None, None),
-        ),
-        ("2/4 dbt build", _run_dbt_build),
-        ("3/4 export parquet", export_marts),
-        ("4/4 report", lambda: print(f"report written to {report.generate()}")),
-    )
-    for label, step in steps:
-        print(f"== {label}")
-        step()
+    print("== 1/4 incremental load")
+    failures = load_live(["entsoe", "energycharts", "openmeteo"], None, None)
+    if failures:
+        print(
+            f"!! degraded: {', '.join(failures)} unavailable - building from the healthy "
+            "sources; provenance flags mark the gaps"
+        )
+    print("== 2/4 dbt build")
+    _run_dbt_build()
+    print("== 3/4 export parquet")
+    export_marts()
+    print("== 4/4 report")
+    print(f"report written to {report.generate()}")
 
 
 def _run_dbt_build() -> None:
@@ -274,9 +307,13 @@ def main() -> None:
                 parser.error("--backfill requires --from YYYY-MM-DD")
             backfill_start = datetime.strptime(args.date_from, "%Y-%m-%d")
         backfill_end = datetime.strptime(args.date_to, "%Y-%m-%d") if args.date_to else None
-        load_live(
+        failures = load_live(
             [s.strip() for s in args.sources.split(",") if s.strip()], backfill_start, backfill_end
         )
+        if failures:
+            # Non-zero exit so automation (cron, CI) treats the run as failed,
+            # even though the healthy sources were still loaded.
+            sys.exit(1)
     elif args.command == "export":
         export_marts()
     elif args.command == "report":
