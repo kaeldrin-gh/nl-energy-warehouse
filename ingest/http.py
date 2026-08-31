@@ -6,13 +6,15 @@ RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
 
 def get_with_retry(
-    url: str, *, params=None, timeout: int = 60, max_retries: int = 5, initial_delay: float = 5.0
+    url: str, *, params=None, timeout: int = 60, max_retries: int = 5, initial_delay: float = 10.0
 ) -> requests.Response:
     """GET with exponential backoff, honoring Retry-After on rate limits.
 
     The backoff ladder must outlast source-side cooldown windows: energy-charts
     returns 429 for roughly a minute once its per-minute quota trips, so a
-    2/4/8s ladder exhausts before the quota resets (INC-007).
+    2/4/8s ladder exhausts before the quota resets (INC-007). The 10s base
+    gives ~5 minutes of total patience, enough to ride out short ENTSO-E
+    outages (INC-009); anything longer is a job for the per-source isolation.
     """
     delay = initial_delay
     last_error = None

@@ -34,24 +34,27 @@ jobs:
         if: env.ENTSOE_TOKEN != ''
         run: python -m ingest.cli load
 
+      # always() keeps these running even when a source failed mid-load: a
+      # partial batch still ships its build, export and artifact. The failed
+      # load step keeps the run red so the alert fires.
       - name: dbt build
-        if: env.ENTSOE_TOKEN != ''
+        if: always() && env.ENTSOE_TOKEN != ''
         run: dbt build --project-dir dbt --profiles-dir dbt
         env:
           DUCKDB_PATH: warehouse/energy.duckdb
 
       - name: dbt source freshness (live sources)
-        if: env.ENTSOE_TOKEN != ''
+        if: always() && env.ENTSOE_TOKEN != ''
         run: dbt source freshness --select source:raw.entsoe_prices source:raw.energycharts_prices source:raw.openmeteo_weather --project-dir dbt --profiles-dir dbt
         env:
           DUCKDB_PATH: warehouse/energy.duckdb
 
       - name: Export marts
-        if: env.ENTSOE_TOKEN != ''
+        if: always() && env.ENTSOE_TOKEN != ''
         run: python -m ingest.cli export
 
       - name: Upload mart exports
-        if: env.ENTSOE_TOKEN != ''
+        if: always() && env.ENTSOE_TOKEN != ''
         uses: actions/upload-artifact@v4
         with:
           name: mart-exports

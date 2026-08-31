@@ -19,6 +19,40 @@ The first live ENTSO-E days exposed two failure modes in the wild, both caught b
 
 ---
 
+## INC-009: The day the primary source said 503
+
+**Category**: upstream outage / blast radius
+
+The scheduled batch failed for the first time: ENTSO-E's Transparency Platform
+returned HTTP 503 for the full length of the retry ladder (~2.5 minutes of
+patience), and because the entsoe loader raised mid-loop, the *entire* daily
+batch died with it - energy-charts and Open-Meteo were never fetched, no build
+ran, no export was produced, no artifact shipped. One source's bad day had
+become the whole pipeline's bad day. The data was fine; the blast radius
+wasn't.
+
+**Detection**: the red run itself, within minutes of the failure (that part
+worked exactly as designed). The gap: a partial batch is strictly better than
+no batch, and the pipeline threw the partial away.
+
+**Design response**:
+- **Per-source isolation** in the incremental load: each source is wrapped so
+  its failure is recorded, printed, and skipped - never allowed to cancel the
+  others. The load still exits non-zero when any source fails, so automation
+  keeps treating the run as failed and the alert fires.
+- **Downstream steps run with `always()`**: build, freshness, export and the
+  artifact upload execute even after a failed load, shipping whatever the
+  healthy sources delivered. Provenance flags mark the gaps; freshness flags
+  the staleness.
+- **More patience at the edge**: the backoff ladder's base delay raised to 10s
+  (~5 minutes total), enough to ride out short outages; anything longer is
+  exactly what the isolation is for.
+- The intended behavior split, stated plainly: **red run + shipped artifact**
+  on a partial batch. A green run with silently missing sources would be the
+  real failure.
+
+---
+
 ## INC-008: The project that only spoke DuckDB
 
 **Category**: portability / dialect drift

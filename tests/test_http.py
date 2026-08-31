@@ -25,7 +25,7 @@ def test_recovers_from_rate_limit(monkeypatch):
 
     assert resp.status_code == 200
     assert len(sleeps) == 2
-    assert sleeps[0] == 5.0 and sleeps[1] == 10.0  # exponential ladder
+    assert sleeps[0] == 10.0 and sleeps[1] == 20.0  # exponential ladder
 
 
 def test_honors_retry_after_header(monkeypatch):
