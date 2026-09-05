@@ -7,7 +7,7 @@
 
 A production-style data warehouse for Dutch electricity prices and weather, built to answer one question: **what actually drives the hourly power price in the Netherlands, and when is it cheap?**
 
-Day-ahead prices from the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu/), hourly weather from KNMI station data (currently served by a keyless [Open-Meteo](https://open-meteo.com/) ERA5 interim after KNMI retired its bulk downloads), cross-checked against [energy-charts.info](https://energy-charts.info/). Ingested idempotently with revision-aware upserts, modeled in dbt, tested in CI, and served as clean marts for BI.
+Day-ahead prices from the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu/), hourly weather from KNMI station data (an [Open-Meteo](https://open-meteo.com/) ERA5 interim covers it while KNMI migrates), cross-checked against [energy-charts.info](https://energy-charts.info/). Ingested idempotently with revision-aware upserts, modeled in dbt, tested in CI, and served as clean marts for BI.
 
 > **New to data engineering?** [PROJECT_EXPLAINED.md](PROJECT_EXPLAINED.md) walks the entire project in plain language — every tool explained, no prior knowledge assumed.
 
@@ -23,7 +23,7 @@ Each of these is handled explicitly and documented in [INCIDENTS.md](INCIDENTS.m
 
 ## The answer, in four numbers
 
-Computed from this repo's own marts: **58,319 delivery hours** (Jan 2020 → Aug 2026), ENTSO-E primary with an energy-charts cross-check, Open-Meteo weather alongside. Full methodology and caveats in [analysis/findings.md](analysis/findings.md).
+Computed from this repo's own marts: **58,500+ delivery hours** (Jan 2020 → today), ENTSO-E primary with an energy-charts cross-check, Open-Meteo weather alongside. Full methodology and caveats in [analysis/findings.md](analysis/findings.md).
 
 | | |
 | --- | --- |
@@ -37,6 +37,25 @@ Computed from this repo's own marts: **58,319 delivery hours** (Jan 2020 → Aug
 One actionable conclusion: **a windy weekend midday is the cheapest segment of the Dutch electricity week**, running at roughly half the price of an average weekday evening.
 
 Every number here is re-runnable in one command: `python -m ingest.cli bi headline` (or `v1`–`v5`) executes the SQL from `bi_queries.sql` against the warehouse — the README's figures are always one query away from being current.
+
+## What it looks like
+
+Six and a half years of **real** Dutch day-ahead prices - ENTSO-E primary, energy-charts.info cross-check and gap-filler - flowing through the dbt marts to Parquet and Power BI. Every visual below is backed by a query block in [`analysis/bi_queries.sql`](analysis/bi_queries.sql); measures live in [`analysis/powerbi_measures.md`](analysis/powerbi_measures.md). The Power BI file itself is in the repo: [`powerbi/nl-energy-dashboard.pbix`](powerbi/nl-energy-dashboard.pbix).
+
+![Dashboard overview](docs/images/04_overview.png)
+*Full report page: headline stats, daily price development, hour-of-day profile, negative-price analysis.*
+
+**Daily average price** — the December 2024 scarcity event pushes one day's average to ~€360/MWh (hourly extreme that day: €873) *(V1)*:
+
+![Daily average day-ahead price](docs/images/01_price_timeline.png)
+
+**Days with negative prices** — solar-glut clusters concentrate in spring and summer 2026, including days with up to ~19 sub-zero hours *(V3)*:
+
+![Negative-price hours per day](docs/images/02_negative_hours.png)
+
+**Shape of an average day** — evening peak vs midday solar dip; the duck curve, straight from market data *(V2)*:
+
+![Average price by hour of day](docs/images/03_day_shape.png)
 
 ## Architecture
 
@@ -58,25 +77,6 @@ Open-Meteo    (ERA5)    ─┘         (KNMI station ingester ready; its legacy
 - **Staging**: deduplication to latest revision, weather local-hour to UTC conversion with explicit DST semantics, and a unified weather feed that prefers KNMI station observations over the Open-Meteo reanalysis.
 - **Marts**: `fct_hourly_price_weather` (one row per UTC hour, price + weather + cross-source diff, `price_source` / `weather_source` provenance flags) and `mart_daily_summary`, both incremental with a revision-matched reprocessing window. ENTSO-E is authoritative; energy-charts fills unpublished hours as a flagged fallback.
 - **Tests**: uniqueness, sanity bounds set to exchange limits, cross-source price alignment, hour-continuity, provenance consistency, plus a native dbt unit test proving the fallback semantics with mocked inputs.
-
-## What it looks like
-
-Six and a half years of **real** Dutch day-ahead prices - ENTSO-E primary, energy-charts.info cross-check and gap-filler - flowing through the dbt marts to Parquet and Power BI. Every visual below is backed by a query block in [`analysis/bi_queries.sql`](analysis/bi_queries.sql); measures live in [`analysis/powerbi_measures.md`](analysis/powerbi_measures.md). The Power BI file itself is in the repo: [`powerbi/nl-energy-dashboard.pbix`](powerbi/nl-energy-dashboard.pbix).
-
-![Dashboard overview](docs/images/04_overview.png)
-*Full report page: headline stats, daily price development, hour-of-day profile, negative-price analysis.*
-
-**Daily average price** — the December 2024 scarcity event pushes one day's average to ~€360/MWh (hourly extreme that day: €873) *(V1)*:
-
-![Daily average day-ahead price](docs/images/01_price_timeline.png)
-
-**Days with negative prices** — solar-glut clusters concentrate in spring and summer 2026, including days with up to ~19 sub-zero hours *(V3)*:
-
-![Negative-price hours per day](docs/images/02_negative_hours.png)
-
-**Shape of an average day** — evening peak vs midday solar dip; the duck curve, straight from market data *(V2)*:
-
-![Average price by hour of day](docs/images/03_day_shape.png)
 
 ## Quickstart
 
@@ -100,17 +100,15 @@ python -m ingest.cli load                                   # incremental: new w
 python -m ingest.cli load --backfill --from 2024-01-01      # chunked historical load, retry with backoff
 ```
 
-Live status: a scheduled cron keeps this repo fed from the live APIs. **ENTSO-E is the primary source**; energy-charts.info fills the ~1.5% of hours where ENTSO-E's publication is incomplete — a `price_source` column records who supplied every number in BI — and `assert_cross_source_alignment` holds the two publishers to a €2/MWh agreement wherever they overlap. Weather currently arrives from Open-Meteo's keyless ERA5 archive; live KNMI ingestion is offline because KNMI retired its legacy uurgeg downloads mid-project ([INC-006](INCIDENTS.md)).
-
-The mart models are incremental (`delete+insert`) with a 7-day reprocessing window that matches the ingestion revision lookback, so a retroactive source correction propagates from raw to marts on the next run without a full refresh.
+Live status: a daily cron keeps this repo fed from the live APIs — **ENTSO-E primary**, energy-charts filling the ~1.5% of hours where its publication is incomplete, weather from Open-Meteo while the KNMI migration is pending ([INC-006](INCIDENTS.md)). `assert_cross_source_alignment` holds the two publishers to a €2/MWh agreement wherever they overlap.
 
 Everything runs locally on DuckDB. The same dbt project is also validated against PostgreSQL in CI (see the `validate-postgres` job) — plain SQL, two engines. A Snowflake profile stub is included; porting was designed for but not yet executed on Snowflake.
 
 ## Semantic layer
 
-`dbt/models/semantics.yml` exposes the marts through the dbt Semantic Layer: an hourly semantic model over `fct_hourly_price_weather` with three metrics (`avg_day_ahead_price`, `negative_price_hours`, `total_radiation`). The definitions are parsed and validated on every CI run as part of `dbt build`. They are plain YAML and travel with the SQL to Snowflake unchanged, where metrics become queryable through the hosted dbt Semantic Layer and its BI integrations.
+`dbt/models/semantics.yml` exposes the marts through the dbt Semantic Layer: an hourly semantic model over `fct_hourly_price_weather` with three metrics (`avg_day_ahead_price`, `negative_price_hours`, `total_radiation`), validated on every CI run. The YAML travels with the SQL to Snowflake unchanged, where metrics become queryable through the hosted dbt Semantic Layer.
 
-> Local metric queries via the `mf` CLI (dbt-metricflow) currently pin to dbt-core ~1.8-era adapters; against dbt 1.12 the CLI crashes inside adapter connection handling (the definitions themselves parse and validate cleanly). When dbt-metricflow catches up, `mf query --metrics avg_day_ahead_price --group-by metric_time` works against this repo out of the box.
+> Local querying via the `mf` CLI is pending dbt-metricflow support for current dbt versions; the definitions themselves parse and validate cleanly.
 
 ## CI/CD
 
@@ -162,11 +160,9 @@ python -m pytest tests -v
 
 - Idempotent, revision-aware ingestion against a source that rewrites history
 - Timezone and DST handling as an explicit, tested modeling decision
-- Cross-source reconciliation with an automated alignment test
-- Source failover with provenance tracking when the authoritative source is unavailable
+- Cross-source reconciliation and provenance-tracked source failover, enforced by an automated alignment test
 - One dbt project, two engines: validated against DuckDB and PostgreSQL on every push
-- dbt layering (staging / intermediate / marts) with tests wired into CI
-- dbt Semantic Layer metric definitions (YAML) over the fact mart, validated on every build
+- dbt layering (staging / intermediate / marts) with tests wired into CI, plus dbt Semantic Layer metric definitions
 - Deterministic sample mode so the whole pipeline runs without credentials
 - An analysis answer ([analysis/findings.md](analysis/findings.md)) with every number computed from the marts — insight, not just plumbing
 
