@@ -14,3 +14,4 @@ exports/
 *.duckdb.wal
 .DS_Store
 INTERVIEW_NOTES.md
+PROJECT_EXPLAINED.md

@@ -8,14 +8,16 @@ A data warehouse for Dutch electricity prices and weather, built to answer one
 question: what drives the hourly power price in the Netherlands, and when is it
 cheap?
 
+**Stack:** Python · dbt · DuckDB · PostgreSQL · GitHub Actions · Power BI
+
 Day-ahead prices come from the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu/),
 weather from KNMI station data ([Open-Meteo](https://open-meteo.com/) ERA5 covers
 the gap while KNMI migrates), cross-checked against [energy-charts.info](https://energy-charts.info/).
 Ingestion is idempotent with revision-aware upserts, modeling is done in dbt, and
 the marts are tested in CI and served for BI.
 
-> New to data engineering? [PROJECT_EXPLAINED.md](PROJECT_EXPLAINED.md) walks the
-> whole project in plain language.
+Streaming counterpart: [de-energy-streaming](https://github.com/kaeldrin-gh/de-energy-streaming)
+covers the Kafka → Spark → Iceberg stack on German day-ahead prices.
 
 ## Why this repo exists
 
@@ -189,15 +191,6 @@ python -m pytest tests -v
 - Determinism tests: the sample generator is byte-identical for a given seed
 - DST integration tests: full dbt builds over synthetic spring and autumn
   transition days, asserting no duplicate hours
-
-## Roadmap
-
-- [x] Incremental marts with a revision-matched reprocessing window
-- [x] Semantic layer metrics validated in CI
-- [x] Scheduled ingest, docs site, pre-commit lint, lockfile and Docker image
-- [ ] KNMI Data Platform migration for live weather (INC-006)
-- [ ] ENTSO-E generation mix and cross-border flows
-- [ ] Cheap-hour notification service
 
 ## License
 
