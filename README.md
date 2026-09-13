@@ -160,7 +160,7 @@ Pre-commit hooks mirror the lint job: `pre-commit install`.
 | --- | --- | --- |
 | CI red | Actions log, failing step | Testing section below |
 | Scheduled ingest failed | `ingest` workflow log | INC-007 (rate limits), INC-006 (retired endpoint), INC-009 (upstream 503) |
-| Cross-source alignment fails | `dbt/tests/assert_cross_source_alignment.sql` output | INC-001, INC-003, INC-007 |
+| Cross-source alignment fails | `dbt/tests/assert_cross_source_alignment.sql` output | INC-001, INC-003, INC-007, INC-010 |
 | One hour looks wrong | `raw.ingest_log`, pipeline health in `exports/report.html` | INC-004, INC-007 |
 | Source freshness fails | `dbt source freshness` output | INC-006 (KNMI offline) |
 

@@ -4,6 +4,31 @@ Postmortems of the data problems this warehouse is designed against. Each incide
 
 ---
 
+## INC-010: The cross-check source that flapped on a settled hour
+
+**Category**: cross-source quality / transient upstream corruption
+
+On 2026-09-13 two runs of the scheduled ingest failed the same way: `assert_cross_source_alignment` found exactly one hour in the 30-day window above the EUR 2/MWh tolerance. Both flagged hours were in the evening of 2026-08-14, and in both cases the primary value survived a later probe while the cross-check value did not:
+
+| Run (UTC) | Flagged hour (UTC) | ENTSO-E | energy-charts | Diff |
+| --- | --- | --- | --- | --- |
+| 17:03 | 2026-08-14 17:00 | 246.25 | 261.97 | 15.72 |
+| 19:27 | 2026-08-14 19:00 | 231.57 | 219.475 | 12.09 |
+
+A rerun between the two failures passed cleanly. Six quarter-level probes of both APIs after the second failure (one manual, five samples over two minutes) returned full coverage and *identical* values from both sources for the whole evening, flagged hours included - diff 0.0 on every hour from 16:00 to 21:00. The wrong numbers do not match any neighbouring hour or quarter, so they are not a shifted window or a parsing bias; the source itself served them, briefly.
+
+**Detection**: `assert_cross_source_alignment`, inside the run that ingested the bad value. Because the artifact now ships even when the build fails (INC-009's `always()` plus the export fix from the same day), the offending rows were diagnosable straight from the run's own artifact, without reproducing the failure.
+
+**Root cause (evidence, not operator-confirmed)**: energy-charts.info sits behind a cache (`Server: Nginx`, `x-cache` response header) and served a stale or inconsistent value for isolated old hours on some requests. The primary feed (ENTSO-E) was stable across every observation, including both failures; the bad value only existed in the failing run's fresh 30-day fetch and healed on the next refetch. The operator has not confirmed this - the evidence is consistent across two failures and six clean probes.
+
+**Design response**:
+- The tolerance stays strict: accepting a cross-source gap would also mask the case where the *primary* feed is the wrong one - INC-003 is exactly that scenario.
+- Provenance stays load-bearing: every mart row names its source and ENTSO-E is authoritative, so a bad cross-check value never had to be trusted, only detected.
+- The failure mode is operational, not structural: refetching heals it (observed six times), so an alignment-only red run is answered by rerunning the workflow; the failure row in the README runbook points here.
+- Open (not implemented): a single automatic refetch-and-rebuild when the *only* failing node is `assert_cross_source_alignment`, using a backfill over the compared 30-day window (the incremental lookback is 7 days and would not refetch the old hour), failing only if the mismatch persists on the second pass.
+
+---
+
 ## INC-007: The hour that published three quarters of itself
 
 **Category**: partial data / source quality
