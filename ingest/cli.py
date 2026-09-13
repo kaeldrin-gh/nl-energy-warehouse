@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -12,6 +13,9 @@ from .config import settings
 
 BACKFILL_CHUNK_DAYS = 30
 BACKFILL_PAUSE_SECONDS = 5.0
+ALIGNMENT_TEST_NAME = "assert_cross_source_alignment"
+# The test compares a 30-day window; 31 days keeps the boundary hour covered.
+ALIGNMENT_RETRY_WINDOW_DAYS = 31
 
 
 def load_sample() -> None:
@@ -239,20 +243,20 @@ def refresh() -> None:
             "sources; provenance flags mark the gaps"
         )
     print("== 2/4 dbt build")
-    _run_dbt_build()
+    build_with_alignment_retry()
     print("== 3/4 export parquet")
     export_marts()
     print("== 4/4 report")
     print(f"report written to {report.generate()}")
 
 
-def _run_dbt_build() -> None:
+def _run_dbt_build() -> subprocess.CompletedProcess:
     dbt = shutil.which("dbt")
     if dbt is None:
         raise SystemExit("dbt executable not found on PATH")
     env = os.environ.copy()
     env["DUCKDB_PATH"] = str(settings.duckdb_path)
-    result = subprocess.run(
+    return subprocess.run(
         ["dbt", "build", "--project-dir", "dbt", "--profiles-dir", "dbt"],
         cwd=settings.root,
         env=env,
@@ -260,12 +264,68 @@ def _run_dbt_build() -> None:
         text=True,
         timeout=600,
     )
-    if result.returncode != 0:
-        print(result.stdout[-2000:])
-        raise SystemExit(f"dbt build failed (exit {result.returncode})")
+
+
+def _print_dbt_summary(result: subprocess.CompletedProcess) -> None:
     lines = [line for line in result.stdout.splitlines() if line.strip()]
     summary = [line for line in lines if "Done." in line]
-    print(summary[-1] if summary else lines[-1])
+    print(summary[-1] if summary else (lines[-1] if lines else "dbt build produced no output"))
+
+
+def failed_node_ids(run_results_path: Path | None = None) -> list[str]:
+    """Unique ids of the nodes that failed or errored in the last dbt run."""
+    path = run_results_path or (settings.root / "dbt" / "target" / "run_results.json")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    return [
+        node.get("unique_id", "")
+        for node in payload.get("results", [])
+        if node.get("status") in ("fail", "error")
+    ]
+
+
+def is_transient_alignment_failure(failed_nodes: list[str]) -> bool:
+    """True only when the cross-source alignment test is the sole failure."""
+    return len(failed_nodes) == 1 and failed_nodes[0].endswith(ALIGNMENT_TEST_NAME)
+
+
+def build_with_alignment_retry(window_days: int = ALIGNMENT_RETRY_WINDOW_DAYS) -> None:
+    """dbt build, with one refetch-and-rebuild for a transient alignment flap.
+
+    The cross-check source periodically serves transiently wrong values for
+    isolated old hours (INC-007, INC-010). The alignment test stays strict;
+    only the case where that single test is the *only* failure is retried,
+    after backfilling the compared window - the incremental lookback is
+    shorter than the test window and would not refetch the old hour. A second
+    failure, or any other failure, is real and fails the run.
+    """
+    result = _run_dbt_build()
+    if result.returncode == 0:
+        _print_dbt_summary(result)
+        return
+
+    failed = failed_node_ids()
+    if not is_transient_alignment_failure(failed):
+        print(result.stdout[-2000:])
+        raise SystemExit(f"dbt build failed (exit {result.returncode})")
+
+    print(
+        "only assert_cross_source_alignment failed - refetching the compared "
+        f"{window_days}-day window and retrying"
+    )
+    start = datetime.utcnow() - timedelta(days=window_days)
+    failures = load_live(["entsoe", "energycharts"], backfill_start=start)
+    if failures:
+        print(f"refetch degraded: {', '.join(failures)} unavailable - retrying the build anyway")
+
+    result = _run_dbt_build()
+    if result.returncode != 0:
+        print(result.stdout[-2000:])
+        raise SystemExit(f"dbt build still failed after refetch (exit {result.returncode})")
+    _print_dbt_summary(result)
+    print("recovered after refetch: transient cross-source flap (INC-010)")
 
 
 def main() -> None:
@@ -298,6 +358,10 @@ def main() -> None:
     sub.add_parser(
         "refresh",
         help="one command: incremental live load -> dbt build -> export -> report",
+    )
+    sub.add_parser(
+        "build",
+        help="dbt build; refetches and retries once if only the alignment test failed (INC-010)",
     )
 
     bi = sub.add_parser("bi", help="run analysis queries from analysis/bi_queries.sql")
@@ -332,6 +396,8 @@ def main() -> None:
         run_bi_query(args.name)
     elif args.command == "refresh":
         refresh()
+    elif args.command == "build":
+        build_with_alignment_retry()
 
 
 if __name__ == "__main__":

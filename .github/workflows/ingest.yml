@@ -37,9 +37,9 @@ jobs:
       # always() keeps these running even when a source failed mid-load: a
       # partial batch still ships its build, export and artifact. The failed
       # load step keeps the run red so the alert fires.
-      - name: dbt build
+      - name: dbt build (refetches and retries once on an alignment flap, INC-010)
         if: always() && env.ENTSOE_TOKEN != ''
-        run: dbt build --project-dir dbt --profiles-dir dbt
+        run: python -m ingest.cli build
         env:
           DUCKDB_PATH: warehouse/energy.duckdb
 

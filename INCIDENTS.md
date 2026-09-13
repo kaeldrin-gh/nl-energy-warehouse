@@ -25,7 +25,7 @@ A rerun between the two failures passed cleanly. Six quarter-level probes of bot
 - The tolerance stays strict: accepting a cross-source gap would also mask the case where the *primary* feed is the wrong one - INC-003 is exactly that scenario.
 - Provenance stays load-bearing: every mart row names its source and ENTSO-E is authoritative, so a bad cross-check value never had to be trusted, only detected.
 - The failure mode is operational, not structural: refetching heals it (observed six times), so an alignment-only red run is answered by rerunning the workflow; the failure row in the README runbook points here.
-- Open (not implemented): a single automatic refetch-and-rebuild when the *only* failing node is `assert_cross_source_alignment`, using a backfill over the compared 30-day window (the incremental lookback is 7 days and would not refetch the old hour), failing only if the mismatch persists on the second pass.
+- **Automatic refetch-and-rebuild** when the only failing node is `assert_cross_source_alignment` (`python -m ingest.cli build`, called by the scheduled workflow): the compared 30-day window is backfilled - not the 7-day incremental lookback, which would miss the old hour - and the build is retried once. A second failure is treated as real and fails the run.
 
 ---
 
