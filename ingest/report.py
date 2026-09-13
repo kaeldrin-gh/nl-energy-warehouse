@@ -197,7 +197,29 @@ def _cross_source_diff(hourly: pd.DataFrame) -> str:
 
 def summary_markdown(duckdb_path: Path | None = None) -> str:
     """Compact Markdown metrics summary for a CI run page (GITHUB_STEP_SUMMARY)."""
-    _, hourly, health = _load_data(duckdb_path)
+    conn = db.connect(duckdb_path)
+    built = conn.execute(
+        "select 1 from information_schema.tables "
+        "where table_schema = 'main' and table_name = 'fct_hourly_price_weather'"
+    ).fetchone()
+    if not built:
+        conn.close()
+        return (
+            "## NL energy warehouse - ingest summary\n\n"
+            "Marts are not built (the dbt build failed) - see the run log.\n"
+        )
+    hourly = conn.execute("select * from main.fct_hourly_price_weather order by hour_utc").fetchdf()
+    health = conn.execute(
+        """
+        select source, max(run_at) as last_run, max(window_end) as data_through,
+               sum(rows_written) as rows_total, count(*) as runs
+        from raw.ingest_log
+        group by source
+        order by source
+        """
+    ).fetchdf()
+    conn.close()
+
     latest = hourly["hour_utc"].max()
     now = pd.Timestamp.now(tz="UTC").tz_localize(None)
     fallback = int((hourly["price_source"] != "entsoe").sum())

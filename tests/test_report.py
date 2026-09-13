@@ -43,6 +43,12 @@ def test_report_week_metrics_consistent(built_sample_warehouse):
     assert metrics["min_hourly"] <= metrics["max_hourly"]
 
 
+def test_summary_markdown_handles_missing_marts(tmp_path):
+    md = report.summary_markdown(tmp_path / "empty.duckdb")
+
+    assert "Marts are not built" in md
+
+
 def test_summary_markdown_has_windows_and_quality(built_sample_warehouse):
     md = report.summary_markdown(built_sample_warehouse)
 

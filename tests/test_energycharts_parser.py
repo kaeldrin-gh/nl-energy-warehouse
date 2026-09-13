@@ -43,6 +43,29 @@ def test_drops_in_progress_hour_missing_last_quarter():
     assert len(df) == 0
 
 
+def test_drops_quarter_hour_missing_leading_quarters():
+    # energy-charts intermittently omits the leading quarter(s); a 3-point hour
+    # ending at :45 must be dropped, not averaged (INC-010).
+    base = 1787529600  # 2026-08-24 00:00 UTC
+    quarter = 900
+    df = energycharts.parse_price_payload(
+        _payload([base + quarter * i for i in (1, 2, 3)], [10.0, 20.0, 30.0])
+    )
+
+    assert len(df) == 0
+
+
+def test_drops_two_point_quarter_hour():
+    # Two quarters ending at :45 are still a partial hour (INC-010).
+    base = 1787529600  # 2026-08-24 00:00 UTC
+    quarter = 900
+    df = energycharts.parse_price_payload(
+        _payload([base + quarter * i for i in (2, 3)], [10.0, 20.0])
+    )
+
+    assert len(df) == 0
+
+
 def test_single_point_hours_kept_only_in_hourly_era():
     # Hourly-era payload: lone :00 points surrounded by other lone points.
     base = 1787529600  # 2026-08-24 00:00 UTC

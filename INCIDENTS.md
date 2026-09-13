@@ -4,28 +4,30 @@ Postmortems of the data problems this warehouse is designed against. Each incide
 
 ---
 
-## INC-010: The cross-check source that flapped on a settled hour
+## INC-010: The cross-check source that published partial hours
 
-**Category**: cross-source quality / transient upstream corruption
+**Category**: partial data / derived-value bias (INC-007 recurrence)
 
-On 2026-09-13 two runs of the scheduled ingest failed the same way: `assert_cross_source_alignment` found exactly one hour in the 30-day window above the EUR 2/MWh tolerance. Both flagged hours were in the evening of 2026-08-14, and in both cases the primary value survived a later probe while the cross-check value did not:
+On 2026-09-13, three of five ingest runs between 17:03 and 20:07 UTC failed `assert_cross_source_alignment`, flagging four distinct hours above the EUR 2/MWh tolerance. All four cross-check values carried the repeating-decimal signature of a mean over fewer than four quarters. Reconstructing each value from the authoritative ENTSO-E quarters identified the cause exactly:
 
-| Run (UTC) | Flagged hour (UTC) | ENTSO-E | energy-charts | Diff |
-| --- | --- | --- | --- | --- |
-| 17:03 | 2026-08-14 17:00 | 246.25 | 261.97 | 15.72 |
-| 19:27 | 2026-08-14 19:00 | 231.57 | 219.475 | 12.09 |
+| Flagged hour (UTC) | energy-charts value | Reconstruction | Missing quarters |
+| --- | --- | --- | --- |
+| 2026-08-14 17:00 | 261.97 | mean(225.19, 258.82, 301.9) | the :00 quarter |
+| 2026-08-14 19:00 | 219.475 | mean(229.0, 209.95) | the :00 and :15 quarters |
+| 2026-08-14 20:00 | 193.223333 | mean(198.29, 194.0, 187.38) | the :00 quarter |
+| 2026-09-12 20:00 | 179.476667 | mean(185.75, 179.11, 173.57) | the :00 quarter |
 
-A rerun between the two failures passed cleanly. Six quarter-level probes of both APIs after the second failure (one manual, five samples over two minutes) returned full coverage and *identical* values from both sources for the whole evening, flagged hours included - diff 0.0 on every hour from 16:00 to 21:00. The wrong numbers do not match any neighbouring hour or quarter, so they are not a shifted window or a parsing bias; the source itself served them, briefly.
+energy-charts intermittently serves an hour with its leading quarter(s) missing. The parser accepted any hour with at least two points ending at :45 and published the mean of the survivors - the exact bias INC-007 exists to prevent, with a leading instead of a trailing gap. The alignment test correctly flagged the biased derived value; the first reading of these failures as stale upstream cache values was wrong.
 
-**Detection**: `assert_cross_source_alignment`, inside the run that ingested the bad value. Because the artifact now ships even when the build fails (INC-009's `always()` plus the export fix from the same day), the offending rows were diagnosable straight from the run's own artifact, without reproducing the failure.
+**Detection**: `assert_cross_source_alignment`, in every failing run, with the offending rows diagnosable from the shipped artifact (INC-009's `always()` plus the export fix from the same day). Six quarter-level API probes during the first occurrence showed both sources agreeing completely minutes later; that agreement was real but misleading - the probes refetched a *complete* hour while the failing runs had fetched the same hour partially.
 
-**Root cause (evidence, not operator-confirmed)**: energy-charts.info sits behind a cache (`Server: Nginx`, `x-cache` response header) and served a stale or inconsistent value for isolated old hours on some requests. The primary feed (ENTSO-E) was stable across every observation, including both failures; the bad value only existed in the failing run's fresh 30-day fetch and healed on the next refetch. The operator has not confirmed this - the evidence is consistent across two failures and six clean probes.
+**Root cause (confirmed)**: a gap in the energy-charts completeness rule, not an upstream cache. `points >= 2 and last_minute >= 45` accepts :15/:30/:45 or :30/:45 subsets. Trailing gaps were covered by INC-007's test; leading gaps were not.
 
 **Design response**:
-- The tolerance stays strict: accepting a cross-source gap would also mask the case where the *primary* feed is the wrong one - INC-003 is exactly that scenario.
-- Provenance stays load-bearing: every mart row names its source and ENTSO-E is authoritative, so a bad cross-check value never had to be trusted, only detected.
-- The failure mode is operational, not structural: refetching heals it (observed six times), so an alignment-only red run is answered by rerunning the workflow; the failure row in the README runbook points here.
-- **Automatic refetch-and-rebuild** when the only failing node is `assert_cross_source_alignment` (`python -m ingest.cli build`, called by the scheduled workflow): the compared 30-day window is backfilled - not the 7-day incremental lookback, which would miss the old hour - and the build is retried once. A second failure is treated as real and fails the run.
+- `parse_price_payload` requires the **full MTU set** (:00, :15, :30, :45) for a quarter-era hour; partial hours are dropped and left to the primary feed. Tests cover leading and trailing gaps.
+- The alignment test stays strict: it caught a real bias in a derived value, exactly as INC-001 designed it to.
+- The refetch-and-retry (`python -m ingest.cli build`) stays: a genuine transient source flap still heals on refetch, and a second failure still fails the run.
+- The misleading signal is documented here, so the next investigator probes both sources' raw payloads, not just the current hourly values.
 
 ---
 

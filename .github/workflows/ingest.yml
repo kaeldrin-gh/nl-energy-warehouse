@@ -55,12 +55,13 @@ jobs:
 
       - name: Metrics summary (rendered on this run's page)
         if: always() && env.ENTSOE_TOKEN != ''
-        run: python -m ingest.cli summary >> "$GITHUB_STEP_SUMMARY"
+        run: python -m ingest.cli summary | tee -a "$GITHUB_STEP_SUMMARY"
         env:
           DUCKDB_PATH: warehouse/energy.duckdb
 
       - name: Generate HTML report
         if: always() && env.ENTSOE_TOKEN != ''
+        continue-on-error: true  # marts can be missing after a failed build
         run: python -m ingest.cli report
         env:
           DUCKDB_PATH: warehouse/energy.duckdb

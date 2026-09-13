@@ -34,7 +34,8 @@ def parse_price_payload(payload: dict) -> pd.DataFrame:
     refetches rather than guessed.
 
     Hours with incomplete coverage are dropped (INC-007): a mean over 3 of 4
-    quarters biases the hour, so a quarter-era hour must end at :45. A lone
+    quarters biases the hour, so a quarter-era hour must carry all four MTUs
+    (:00, :15, :30, :45) - merely ending at :45 is not enough (INC-010). A lone
     :00 point counts as complete only next to other single-point hours
     (hourly-era data); isolated single points are treated as partial.
     """
@@ -54,15 +55,22 @@ def parse_price_payload(payload: dict) -> pd.DataFrame:
         )
     df = pd.DataFrame(rows, columns=["hour_utc", "minute", "price_eur_mwh"])
 
-    counts = df.groupby("hour_utc")["price_eur_mwh"].transform("size")
-    last_minute = df.groupby("hour_utc")["minute"].transform("max")
-    multi_point_complete = (counts >= 2) & (last_minute >= 45)
+    # A quarter-era hour must carry the full MTU set - :00, :15, :30, :45 -
+    # not merely end at :45: energy-charts intermittently omits the leading
+    # quarter(s), and a mean over the survivors biases the hour (INC-010).
+    per_hour = df.groupby("hour_utc").agg(
+        count=("price_eur_mwh", "size"),
+        minutes=("minute", lambda series: frozenset(int(round(m)) for m in series)),
+    )
+    quarter_complete = per_hour.index[
+        (per_hour["count"] == 4) & (per_hour["minutes"] == frozenset({0, 15, 30, 45}))
+    ]
 
     # A lone :00 point is complete only in an hourly-era payload. The era is
     # read from the nearest *published* hours on either side (gaps from null
     # hours must not terminate the lookup): if either neighbour carries
     # multiple MTUs, the lone point is a partial hour and is dropped.
-    hour_counts = df.groupby("hour_utc")["price_eur_mwh"].size()
+    hour_counts = per_hour["count"]
     drop_lone = set()
     for i, hour in enumerate(hour_counts.index[hour_counts == 1]):
         prev_count = hour_counts.iloc[i - 1] if i > 0 else 1
@@ -70,6 +78,6 @@ def parse_price_payload(payload: dict) -> pd.DataFrame:
         if prev_count >= 2 or next_count >= 2:
             drop_lone.add(hour)
 
-    keep_lone = (counts == 1) & (~df["hour_utc"].isin(drop_lone))
-    full = df[multi_point_complete | keep_lone]
+    keep_lone = hour_counts.index[(hour_counts == 1) & (~hour_counts.index.isin(drop_lone))]
+    full = df[df["hour_utc"].isin(set(quarter_complete) | set(keep_lone))]
     return full.groupby("hour_utc", as_index=False)["price_eur_mwh"].mean()
