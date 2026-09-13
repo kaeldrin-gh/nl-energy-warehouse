@@ -3,7 +3,19 @@ name: docs
 on:
   push:
     branches: [main, master]
+  schedule:
+    # Daily at 14:30 UTC, after the ingest run (~13:45) has freshened the marts.
+    - cron: "30 14 * * *"
   workflow_dispatch:
+    inputs:
+      live:
+        description: "Build the report from live sources (requires ENTSOE_TOKEN)"
+        type: boolean
+        default: false
+
+# Workflow-level env may read `secrets`; step `if:` conditions cannot.
+env:
+  ENTSOE_TOKEN: ${{ secrets.ENTSOE_TOKEN }}
 
 permissions:
   contents: read
@@ -28,18 +40,51 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dbt,test]"
 
-      - name: Load sample data
-        run: python -m ingest.cli load --sample
+      # Scheduled/manual live builds feed the report from the real market.
+      # Pushes and forks without the token use the deterministic sample, so the
+      # catalog always deploys.
+      - name: Load data (live on schedule/manual, sample otherwise)
+        id: load
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.live }}" = "true" ]; then
+            if [ -n "$ENTSOE_TOKEN" ]; then
+              python -m ingest.cli load
+              echo "live=1" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          python -m ingest.cli load --sample
+          echo "live=0" >> "$GITHUB_OUTPUT"
 
       - name: dbt build
-        run: dbt build --project-dir dbt --profiles-dir dbt
-        env:
-          DUCKDB_PATH: warehouse/energy.duckdb
+        run: python -m ingest.cli build
 
       - name: dbt docs generate
         run: dbt docs generate --project-dir dbt --profiles-dir dbt
         env:
           DUCKDB_PATH: warehouse/energy.duckdb
+
+      - name: Generate live report (live builds only)
+        if: steps.load.outputs.live == '1'
+        run: python -m ingest.cli report
+
+      - name: Add the live report to the site (live builds only)
+        if: steps.load.outputs.live == '1'
+        run: cp exports/report.html dbt/target/report.html
+
+      # One Pages site per repo, and each deployment replaces it, so a
+      # sample-data deploy must carry the last live report forward instead of
+      # deleting it. Skips cleanly before the first live run.
+      - name: Preserve the last live report (non-live builds)
+        if: steps.load.outputs.live != '1'
+        run: |
+          if curl -fsSL -o dbt/target/report.html \
+            https://kaeldrin-gh.github.io/nl-energy-warehouse/report.html; then
+            echo "kept the previously deployed report"
+          else
+            rm -f dbt/target/report.html
+            echo "no previously deployed report found"
+          fi
 
       - name: Upload pages artifact
         uses: actions/upload-pages-artifact@v5

@@ -146,9 +146,12 @@ Three workflows in `.github/workflows/`:
 - **ci**: ruff, the full pytest suite (including DST integration tests that run
   complete dbt builds), a sample-data `dbt build` with source freshness, and
   `validate-postgres`, which builds the same project against PostgreSQL 17.
-- **docs**: regenerates the dbt documentation site from sample data and deploys
-  it to [GitHub Pages](https://kaeldrin-gh.github.io/nl-energy-warehouse/), a
-  live data catalog with lineage, column docs and test coverage.
+- **docs**: regenerates the dbt documentation site and, on the daily schedule,
+  builds the live market report from the marts; both deploy to
+  [GitHub Pages](https://kaeldrin-gh.github.io/nl-energy-warehouse/), with the
+  report at
+  [report.html](https://kaeldrin-gh.github.io/nl-energy-warehouse/report.html).
+  The catalog shows lineage, column docs and test coverage.
 - **ingest**: daily cron for incremental load, `dbt build` and Parquet export;
   refetches and retries once if only the alignment test fails (INC-010) and
   renders a metrics table on the run page, with `report.html` in the artifact.
