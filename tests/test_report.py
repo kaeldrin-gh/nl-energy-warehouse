@@ -41,3 +41,13 @@ def test_report_week_metrics_consistent(built_sample_warehouse):
     # the cheapest and priciest hours must come from inside this week's window
     assert hours_this["hour_local"].min() <= metrics["min_when"] <= hours_this["hour_local"].max()
     assert metrics["min_hourly"] <= metrics["max_hourly"]
+
+
+def test_summary_markdown_has_windows_and_quality(built_sample_warehouse):
+    md = report.summary_markdown(built_sample_warehouse)
+
+    assert md.startswith("## NL energy warehouse")
+    for fragment in ("| Last 24 h |", "| Last 7 days |", "| Last 30 days |"):
+        assert fragment in md
+    assert "Max cross-source diff" in md
+    assert "| Source | Last run |" in md

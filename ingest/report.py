@@ -195,6 +195,51 @@ def _cross_source_diff(hourly: pd.DataFrame) -> str:
     return _fig_to_b64(fig)
 
 
+def summary_markdown(duckdb_path: Path | None = None) -> str:
+    """Compact Markdown metrics summary for a CI run page (GITHUB_STEP_SUMMARY)."""
+    _, hourly, health = _load_data(duckdb_path)
+    latest = hourly["hour_utc"].max()
+    now = pd.Timestamp.now(tz="UTC").tz_localize(None)
+    fallback = int((hourly["price_source"] != "entsoe").sum())
+    diff = hourly["price_diff_eur"]
+
+    lines = [
+        "## NL energy warehouse - ingest summary",
+        "",
+        f"Data through **{latest} UTC** ({(now - latest).total_seconds() / 3600:.1f} h old) · "
+        f"**{len(hourly)}** delivery hours · price sources: entsoe "
+        f"{len(hourly) - fallback} / energycharts {fallback}",
+        "",
+        "| Window | Avg EUR/MWh | Min | Max | Negative hours |",
+        "| --- | ---: | ---: | ---: | ---: |",
+    ]
+    for days, label in ((1, "Last 24 h"), (7, "Last 7 days"), (30, "Last 30 days")):
+        window = hourly[hourly["hour_utc"] > latest - pd.Timedelta(days=days)]
+        negative = int(window["is_negative_price"].sum())
+        lines.append(
+            f"| {label} | {window['price_eur_mwh'].mean():.2f} | "
+            f"{window['price_eur_mwh'].min():.2f} | {window['price_eur_mwh'].max():.2f} | "
+            f"{negative} ({100 * negative / len(window):.1f} %) |"
+        )
+
+    lines += [
+        "",
+        "| Quality | Value |",
+        "| --- | ---: |",
+        f"| Max cross-source diff | {diff.max():.2f} EUR/MWh |",
+        f"| Hours above 1 EUR diff | {int((diff > 1).sum())} |",
+        f"| Weather match | {100 * hourly['has_weather_match'].mean():.1f} % |",
+        "",
+        "| Source | Last run | Data through | Rows written |",
+        "| --- | --- | --- | ---: |",
+    ]
+    lines += [
+        f"| {row.source} | {row.last_run} | {row.data_through} | {int(row.rows_total):,} |"
+        for row in health.itertuples()
+    ]
+    return "\n".join(lines)
+
+
 def generate(out_path: Path | None = None, duckdb_path: Path | None = None) -> Path:
     daily, hourly, health = _load_data(duckdb_path)
     metrics, this_week, hours_this, hours_prev = _week_metrics(daily, hourly)

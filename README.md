@@ -150,8 +150,9 @@ Three workflows in `.github/workflows/`:
   it to [GitHub Pages](https://kaeldrin-gh.github.io/nl-energy-warehouse/), a
   live data catalog with lineage, column docs and test coverage.
 - **ingest**: daily cron for incremental load, `dbt build` and Parquet export;
-  refetches and retries once if only the alignment test fails (INC-010). Skips
-  cleanly when the `ENTSOE_TOKEN` secret is absent, so forks stay green.
+  refetches and retries once if only the alignment test fails (INC-010) and
+  renders a metrics table on the run page, with `report.html` in the artifact.
+  Skips cleanly when the `ENTSOE_TOKEN` secret is absent, so forks stay green.
 
 Pre-commit hooks mirror the lint job: `pre-commit install`.
 

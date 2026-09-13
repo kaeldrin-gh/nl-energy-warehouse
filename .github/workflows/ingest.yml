@@ -53,6 +53,18 @@ jobs:
         if: always() && env.ENTSOE_TOKEN != ''
         run: python -m ingest.cli export
 
+      - name: Metrics summary (rendered on this run's page)
+        if: always() && env.ENTSOE_TOKEN != ''
+        run: python -m ingest.cli summary >> "$GITHUB_STEP_SUMMARY"
+        env:
+          DUCKDB_PATH: warehouse/energy.duckdb
+
+      - name: Generate HTML report
+        if: always() && env.ENTSOE_TOKEN != ''
+        run: python -m ingest.cli report
+        env:
+          DUCKDB_PATH: warehouse/energy.duckdb
+
       - name: Upload mart exports
         if: always() && env.ENTSOE_TOKEN != ''
         uses: actions/upload-artifact@v7

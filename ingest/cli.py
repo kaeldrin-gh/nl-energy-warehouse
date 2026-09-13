@@ -363,6 +363,10 @@ def main() -> None:
         "build",
         help="dbt build; refetches and retries once if only the alignment test failed (INC-010)",
     )
+    sub.add_parser(
+        "summary",
+        help="print a Markdown metrics summary of the marts (used on CI run pages)",
+    )
 
     bi = sub.add_parser("bi", help="run analysis queries from analysis/bi_queries.sql")
     bi.add_argument(
@@ -398,6 +402,11 @@ def main() -> None:
         refresh()
     elif args.command == "build":
         build_with_alignment_retry()
+    elif args.command == "summary":
+        try:
+            print(report.summary_markdown())
+        except Exception as error:  # a failed build can leave the marts missing
+            print(f"summary unavailable: {error}")
 
 
 if __name__ == "__main__":
