@@ -188,6 +188,16 @@ def export_marts(out_dir: Path | None = None, duckdb_path: Path | None = None) -
     out = out_dir or (settings.root / "exports")
     out.mkdir(parents=True, exist_ok=True)
     for table in ("fct_hourly_price_weather", "mart_daily_summary"):
+        built = conn.execute(
+            "select 1 from information_schema.tables "
+            "where table_schema = 'main' and table_name = ?",
+            [table],
+        ).fetchone()
+        if not built:
+            # A failed dbt build can leave a mart unbuilt; export what exists
+            # so this step does not mask the real failure with a CatalogError.
+            print(f"skipped {table} (not built)")
+            continue
         df = conn.execute(f"select * from main.{table}").fetchdf()
         if table == "fct_hourly_price_weather" and "hour_local_label" in df.columns:
             # Nullable by design (hours without weather); keep the pandas dtype

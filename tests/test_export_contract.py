@@ -62,3 +62,26 @@ def test_export_has_no_all_null_required_columns(sample_export):
     df = pd.read_parquet(sample_export / "fct_hourly_price_weather.parquet")
     for column in ("hour_utc", "price_eur_mwh", "price_source", "is_negative_price"):
         assert df[column].notna().all(), f"{column} must never be null in the export"
+
+
+def test_export_skips_marts_that_a_failed_build_left_unbuilt(tmp_path):
+    """A failing dbt test must not turn the export step into a CatalogError.
+
+    Regression: the scheduled ingest exports with `always()` so a partial
+    warehouse still ships; the missing mart was crashing the step and hiding
+    the real failure (INC-007 recurrence, 2026-09-13).
+    """
+    import duckdb
+
+    db_path = tmp_path / "partial.duckdb"
+    conn = duckdb.connect(str(db_path))
+    conn.execute(
+        "create table fct_hourly_price_weather (hour_utc timestamp, hour_local_label bigint)"
+    )
+    conn.close()
+
+    out = tmp_path / "exports"
+    cli.export_marts(out, db_path)
+
+    assert (out / "fct_hourly_price_weather.parquet").exists()
+    assert not (out / "mart_daily_summary.parquet").exists()
