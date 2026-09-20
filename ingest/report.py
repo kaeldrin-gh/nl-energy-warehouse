@@ -311,6 +311,8 @@ def summary_markdown(duckdb_path: Path | None = None) -> str:
         topics, total, filtered = news
         lines += [
             "",
+            "### News context",
+            "",
             f"| Energy topic (latest {total} headlines) | Headlines |",
             "| --- | ---: |",
         ]

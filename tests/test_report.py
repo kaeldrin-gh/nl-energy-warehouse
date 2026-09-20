@@ -69,6 +69,7 @@ def test_summary_and_report_include_news_when_present(built_sample_warehouse, tm
     conn.close()
 
     summary = report.summary_markdown(built_sample_warehouse)
+    assert "### News context" in summary
     assert "| Energy topic (latest 1 headlines) | Headlines |" in summary
     assert "| policy | 1 |" in summary
     assert "0 of 1 headlines were general news and filtered out." in summary
