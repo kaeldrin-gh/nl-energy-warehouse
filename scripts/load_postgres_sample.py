@@ -47,6 +47,17 @@ RAW_DDL = [
         fetched_at timestamp not null,
         primary key (station, interval_end_local)
     )""",
+    """create table if not exists raw.news_headlines (
+        source varchar not null,
+        link varchar not null,
+        title varchar not null,
+        published_ts timestamp,
+        category varchar,
+        confidence double precision,
+        model varchar,
+        fetched_at timestamp not null,
+        primary key (source, link)
+    )""",
 ]
 
 
