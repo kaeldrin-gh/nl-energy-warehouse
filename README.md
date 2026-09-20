@@ -22,8 +22,8 @@ Streaming counterpart: [de-energy-streaming](https://github.com/kaeldrin-gh/de-e
 covers the Kafka → Spark → Iceberg stack on German day-ahead prices.
 
 Managed-platform counterpart: [databricks-energy-quality](https://github.com/kaeldrin-gh/databricks-energy-quality)
-covers data-quality monitoring on Databricks Free Edition (Unity Catalog, Delta,
-Lakeflow pipelines, Declarative Automation Bundles).
+covers data-quality monitoring on Databricks (Unity Catalog, Delta, Lakeflow
+pipelines, Declarative Automation Bundles).
 
 ## Why this repo exists
 
