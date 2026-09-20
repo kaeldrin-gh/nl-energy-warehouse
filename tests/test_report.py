@@ -69,8 +69,9 @@ def test_summary_and_report_include_news_when_present(built_sample_warehouse, tm
     conn.close()
 
     summary = report.summary_markdown(built_sample_warehouse)
-    assert "News topic (latest headlines)" in summary
+    assert "| Energy topic (latest 1 headlines) | Headlines |" in summary
     assert "| policy | 1 |" in summary
+    assert "0 of 1 headlines were general news and filtered out." in summary
 
     html = report.generate(out_path=tmp_path / "report.html", duckdb_path=built_sample_warehouse)
     assert "News context" in html.read_text(encoding="utf-8")

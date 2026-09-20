@@ -31,29 +31,31 @@ from . import db
 log = logging.getLogger(__name__)
 
 DEFAULT_FEEDS = [
-    "https://feeds.nos.nl/nosnieuwseconomie",
-    "https://www.nu.nl/rss/Economie",
+    "https://solarmagazine.nl/rss",
+    "https://www.energiepodium.nl/feed",
+    "https://www.duurzaamnieuws.nl/feed/",
     "https://windpowernl.com/feed/",
 ]
 
 CLASSIFIER_LABELS = [
-    "weather",
-    "grid incident",
-    "policy",
-    "market design",
+    "grid and infrastructure",
+    "policy and regulation",
+    "power prices and markets",
     "gas",
-    "technology",
+    "renewables",
+    "batteries and storage",
+    "hydrogen",
+    "companies and projects",
+    "weather",
     "none of these",
 ]
 
 CLASSIFIER_INSTRUCTIONS = (
-    "Classify Dutch and European energy market news. weather = storms, heat, "
-    "drought, wind or solar conditions that affect power. grid incident = "
-    "outages, faults, redispatch or grid emergencies. policy = laws, regulation, "
-    "subsidies, government decisions. market design = auction rules, market "
-    "coupling, power prices, trading. gas = gas supply, TTF, storage, LNG. "
-    "technology = batteries, hydrogen, solar, wind projects. none of these = "
-    "not about the energy market."
+    "Classify Dutch, German and European energy news. If a headline touches any "
+    "part of the energy system - generation, grids, power markets, prices, "
+    "policy, storage, hydrogen, gas, utilities or projects - pick the closest "
+    "topic. Use 'none of these' only for clearly unrelated news (general "
+    "finance, macro, housing, labour, sport, culture)."
 )
 
 USER_AGENT = "nl-energy-warehouse/0.1 (+https://github.com/kaeldrin-gh/nl-energy-warehouse)"

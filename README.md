@@ -73,14 +73,16 @@ about 19 consecutive sub-zero hours:
 
 ## News context (optional)
 
-`python -m ingest.cli news` fetches public Dutch energy-news headlines (NOS
-Economie, NU.nl Economie, WindpowerNL) and classifies each one through
-[classifier.dev](https://classifier.dev) - a keyless, free HTTP classifier with
-a calibrated confidence - into `weather / grid incident / policy / market
-design / gas / technology`. A `none of these` answer is stored as a NULL
-category. Headlines land in `raw.news_headlines`, are staged as
-`stg_news__headlines`, and appear as topic counts on the daily run-page summary
-and in the HTML report.
+`python -m ingest.cli news` fetches public Dutch energy-news headlines (Solar
+Magazine, Energiepodium, Duurzaam Nieuws, WindpowerNL) and classifies each one
+through [classifier.dev](https://classifier.dev) - a keyless, free HTTP
+classifier with a calibrated confidence - into `grid and infrastructure / policy
+and regulation / power prices and markets / gas / renewables / batteries and
+storage / hydrogen / companies and projects / weather`. A `none of these` answer
+is stored as a NULL category. Headlines land in `raw.news_headlines`, are staged
+as `stg_news__headlines`, and appear as topic counts on the daily run-page
+summary and in the HTML report, alongside how many headlines were general news
+and filtered out.
 
 The enrichment is optional and fails soft: a broken feed is skipped, a
 classifier outage stores the headline unclassified (the next run fixes it), and

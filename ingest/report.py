@@ -195,27 +195,32 @@ def _cross_source_diff(hourly: pd.DataFrame) -> str:
     return _fig_to_b64(fig)
 
 
-def _news_topics(conn) -> pd.DataFrame | None:
-    """Topic counts from the news staging model; None when it is not built."""
+def _news_stats(conn) -> tuple[pd.DataFrame, int, int] | None:
+    """(energy topics, total headlines, filtered) from the staging model."""
     exists = conn.execute(
         "select 1 from information_schema.tables "
         "where table_schema = 'main' and table_name = 'stg_news__headlines'"
     ).fetchone()
     if not exists:
         return None
-    return conn.execute(
+    topics = conn.execute(
         """
-        select coalesce(category, 'none / unclassified') as topic, count(*) as headlines
+        select category as topic, count(*) as headlines
         from main.stg_news__headlines
+        where category is not null
         group by 1
         order by headlines desc, topic
         """
     ).fetchdf()
+    total, filtered = conn.execute(
+        "select count(*), count(*) filter (where category is null) from main.stg_news__headlines"
+    ).fetchone()
+    return topics, int(total), int(filtered)
 
 
-def _load_news(duckdb_path: Path | None = None) -> pd.DataFrame | None:
+def _load_news(duckdb_path: Path | None = None) -> tuple[pd.DataFrame, int, int] | None:
     conn = db.connect(duckdb_path)
-    news = _news_topics(conn)
+    news = _news_stats(conn)
     conn.close()
     return news
 
@@ -260,7 +265,7 @@ def summary_markdown(duckdb_path: Path | None = None) -> str:
         order by source
         """
     ).fetchdf()
-    news = _news_topics(conn)
+    news = _news_stats(conn)
     conn.close()
 
     latest = hourly["hour_utc"].max()
@@ -302,13 +307,18 @@ def summary_markdown(duckdb_path: Path | None = None) -> str:
         f"| {row.source} | {row.last_run} | {row.data_through} | {int(row.rows_total):,} |"
         for row in health.itertuples()
     ]
-    if news is not None and not news.empty:
+    if news is not None:
+        topics, total, filtered = news
         lines += [
             "",
-            "| News topic (latest headlines) | Headlines |",
+            f"| Energy topic (latest {total} headlines) | Headlines |",
             "| --- | ---: |",
         ]
-        lines += [f"| {row.topic} | {int(row.headlines)} |" for row in news.itertuples()]
+        if not topics.empty:
+            lines += [f"| {row.topic} | {int(row.headlines)} |" for row in topics.itertuples()]
+        else:
+            lines.append("| (none found) | 0 |")
+        lines += ["", f"_{filtered} of {total} headlines were general news and filtered out._"]
     return "\n".join(lines)
 
 
@@ -358,13 +368,20 @@ def generate(out_path: Path | None = None, duckdb_path: Path | None = None) -> P
         ]
     )
 
-    if news is not None and not news.empty:
+    if news is not None and news[1]:
+        topics, total, filtered = news
+        table = _news_table(topics) if not topics.empty else "<p>No energy topics found.</p>"
+        chart = (
+            f"<img src='data:image/png;base64,{_news_topics_chart(topics)}'>"
+            if not topics.empty
+            else ""
+        )
         news_section = (
-            "<h2>News context (latest headlines)</h2>"
-            f"{_news_table(news)}"
-            f"<img src='data:image/png;base64,{_news_topics_chart(news)}'>"
+            f"<h2>News context (latest {total} headlines)</h2>"
+            f"{table}{chart}"
             "<p class='sub'>Topics from public energy-news feeds, classified by "
-            "classifier.dev as an optional enrichment.</p>"
+            f"classifier.dev. {filtered} of {total} headlines were general news and "
+            "filtered out.</p>"
         )
     else:
         news_section = ""
