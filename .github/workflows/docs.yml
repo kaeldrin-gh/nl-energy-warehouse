@@ -56,6 +56,11 @@ jobs:
           python -m ingest.cli load --sample
           echo "live=0" >> "$GITHUB_OUTPUT"
 
+      - name: Load news headlines (live builds only, optional)
+        if: steps.load.outputs.live == '1'
+        continue-on-error: true
+        run: python -m ingest.cli news
+
       - name: dbt build
         run: python -m ingest.cli build
 

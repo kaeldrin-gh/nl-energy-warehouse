@@ -195,6 +195,48 @@ def _cross_source_diff(hourly: pd.DataFrame) -> str:
     return _fig_to_b64(fig)
 
 
+def _news_topics(conn) -> pd.DataFrame | None:
+    """Topic counts from the news staging model; None when it is not built."""
+    exists = conn.execute(
+        "select 1 from information_schema.tables "
+        "where table_schema = 'main' and table_name = 'stg_news__headlines'"
+    ).fetchone()
+    if not exists:
+        return None
+    return conn.execute(
+        """
+        select coalesce(category, 'none / unclassified') as topic, count(*) as headlines
+        from main.stg_news__headlines
+        group by 1
+        order by headlines desc, topic
+        """
+    ).fetchdf()
+
+
+def _load_news(duckdb_path: Path | None = None) -> pd.DataFrame | None:
+    conn = db.connect(duckdb_path)
+    news = _news_topics(conn)
+    conn.close()
+    return news
+
+
+def _news_table(news: pd.DataFrame) -> str:
+    rows = "".join(
+        f"<tr><td>{row.topic}</td><td>{int(row.headlines)}</td></tr>" for row in news.itertuples()
+    )
+    return f"<table><tr><th>topic</th><th>headlines</th></tr>{rows}</table>"
+
+
+def _news_topics_chart(news: pd.DataFrame) -> str:
+    fig, ax = plt.subplots(figsize=(7, 3.2))
+    ax.barh(news["topic"], news["headlines"], color=BLUE)
+    ax.set_title("News topics (latest headlines)")
+    ax.set_xlabel("headlines")
+    ax.invert_yaxis()
+    fig.tight_layout()
+    return _fig_to_b64(fig)
+
+
 def summary_markdown(duckdb_path: Path | None = None) -> str:
     """Compact Markdown metrics summary for a CI run page (GITHUB_STEP_SUMMARY)."""
     conn = db.connect(duckdb_path)
@@ -218,6 +260,7 @@ def summary_markdown(duckdb_path: Path | None = None) -> str:
         order by source
         """
     ).fetchdf()
+    news = _news_topics(conn)
     conn.close()
 
     latest = hourly["hour_utc"].max()
@@ -259,11 +302,19 @@ def summary_markdown(duckdb_path: Path | None = None) -> str:
         f"| {row.source} | {row.last_run} | {row.data_through} | {int(row.rows_total):,} |"
         for row in health.itertuples()
     ]
+    if news is not None and not news.empty:
+        lines += [
+            "",
+            "| News topic (latest headlines) | Headlines |",
+            "| --- | ---: |",
+        ]
+        lines += [f"| {row.topic} | {int(row.headlines)} |" for row in news.itertuples()]
     return "\n".join(lines)
 
 
 def generate(out_path: Path | None = None, duckdb_path: Path | None = None) -> Path:
     daily, hourly, health = _load_data(duckdb_path)
+    news = _load_news(duckdb_path)
     metrics, this_week, hours_this, hours_prev = _week_metrics(daily, hourly)
 
     corr = hourly[["price_eur_mwh", "temp_c", "wind_ms", "radiation_jm2"]].corr()
@@ -307,6 +358,17 @@ def generate(out_path: Path | None = None, duckdb_path: Path | None = None) -> P
         ]
     )
 
+    if news is not None and not news.empty:
+        news_section = (
+            "<h2>News context (latest headlines)</h2>"
+            f"{_news_table(news)}"
+            f"<img src='data:image/png;base64,{_news_topics_chart(news)}'>"
+            "<p class='sub'>Topics from public energy-news feeds, classified by "
+            "classifier.dev as an optional enrichment.</p>"
+        )
+    else:
+        news_section = ""
+
     generated = pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d %H:%M UTC")
     data_range = f"{hourly['hour_local'].min():%d %b %Y} – {hourly['hour_local'].max():%d %b %Y}"
 
@@ -342,6 +404,7 @@ Comparisons use the previous 7-day window; lower price deltas are green.</p>
 <tr><th>source</th><th>last run</th><th>data through</th><th>rows written (total)</th><th>runs</th></tr>
 {health_rows}
 </table>
+{news_section}
 
 <h2>Headline stats (full history)</h2>
 <table><tr><th>metric</th><th>value</th></tr>{stat_rows}</table>

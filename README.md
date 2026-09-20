@@ -69,6 +69,22 @@ about 19 consecutive sub-zero hours:
 
 ![Negative-price hours per day](docs/images/02_negative_hours.png)
 
+## News context (optional)
+
+`python -m ingest.cli news` fetches public Dutch energy-news headlines (NOS
+Economie, NU.nl Economie, WindpowerNL) and classifies each one through
+[classifier.dev](https://classifier.dev) - a keyless, free HTTP classifier with
+a calibrated confidence - into `weather / grid incident / policy / market
+design / gas / technology`. A `none of these` answer is stored as a NULL
+category. Headlines land in `raw.news_headlines`, are staged as
+`stg_news__headlines`, and appear as topic counts on the daily run-page summary
+and in the HTML report.
+
+The enrichment is optional and fails soft: a broken feed is skipped, a
+classifier outage stores the headline unclassified (the next run fixes it), and
+nothing in the price pipeline depends on it. `NEWS_FEEDS` and `CLASSIFIER_URL`
+override the defaults (see `.env.example`).
+
 ## Architecture
 
 ```
@@ -119,6 +135,7 @@ optional), then:
 ```bash
 python -m ingest.cli load                                   # incremental + 7-day revision lookback
 python -m ingest.cli load --backfill --from 2024-01-01      # chunked historical load
+python -m ingest.cli news                                   # optional: news headlines with topics
 ```
 
 A daily cron keeps the repositories fed from the live APIs: ENTSO-E primary,
@@ -147,14 +164,16 @@ Three workflows in `.github/workflows/`:
   complete dbt builds), a sample-data `dbt build` with source freshness, and
   `validate-postgres`, which builds the same project against PostgreSQL 17.
 - **docs**: regenerates the dbt documentation site and, on the daily schedule,
-  builds the live market report from the marts; both deploy to
+  builds the live market report (price metrics and news topics) from the marts;
+  both deploy to
   [GitHub Pages](https://kaeldrin-gh.github.io/nl-energy-warehouse/), with the
   report at
   [report.html](https://kaeldrin-gh.github.io/nl-energy-warehouse/report.html).
   The catalog shows lineage, column docs and test coverage.
-- **ingest**: daily cron for incremental load, `dbt build` and Parquet export;
-  refetches and retries once if only the alignment test fails (INC-010) and
-  renders a metrics table on the run page, with `report.html` in the artifact.
+- **ingest**: daily cron for incremental load, an optional news load, `dbt build`
+  and Parquet export; refetches and retries once if only the alignment test
+  fails (INC-010) and renders a metrics table on the run page, with
+  `report.html` in the artifact.
   Skips cleanly when the `ENTSOE_TOKEN` secret is absent, so forks stay green.
 
 Pre-commit hooks mirror the lint job: `pre-commit install`.

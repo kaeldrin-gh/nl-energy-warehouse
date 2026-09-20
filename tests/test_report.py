@@ -7,7 +7,7 @@ from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT))
 
-from ingest import report  # noqa: E402
+from ingest import db, report  # noqa: E402
 
 
 @pytest.fixture()
@@ -57,3 +57,20 @@ def test_summary_markdown_has_windows_and_quality(built_sample_warehouse):
         assert fragment in md
     assert "Max cross-source diff" in md
     assert "| Source | Last run |" in md
+
+
+def test_summary_and_report_include_news_when_present(built_sample_warehouse, tmp_path):
+    conn = db.connect(built_sample_warehouse)
+    conn.execute(
+        "insert into raw.news_headlines values "
+        "('example.nl', 'https://x/1', 'Windpark op zee', '2026-09-19 08:00:00', "
+        "'policy', 0.9, 'm', '2026-09-20 08:00:00')"
+    )
+    conn.close()
+
+    summary = report.summary_markdown(built_sample_warehouse)
+    assert "News topic (latest headlines)" in summary
+    assert "| policy | 1 |" in summary
+
+    html = report.generate(out_path=tmp_path / "report.html", duckdb_path=built_sample_warehouse)
+    assert "News context" in html.read_text(encoding="utf-8")

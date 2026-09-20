@@ -24,3 +24,11 @@ models:
         tests: [unique, not_null]
       - name: temp_c
         tests: [not_null]
+
+  - name: stg_news__headlines
+    description: "Deduplicated news headlines with classified topics (optional enrichment; empty when the news load has not run)."
+    columns:
+      - name: headline_key
+        tests: [unique, not_null]
+      - name: title
+        tests: [not_null]

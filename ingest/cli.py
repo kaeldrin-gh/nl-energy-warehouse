@@ -242,6 +242,12 @@ def refresh() -> None:
             f"!! degraded: {', '.join(failures)} unavailable - building from the healthy "
             "sources; provenance flags mark the gaps"
         )
+    try:
+        from .news import load_news
+
+        load_news()
+    except Exception as error:  # optional enrichment must never block a refresh
+        print(f"news enrichment unavailable: {error}")
     print("== 2/4 dbt build")
     build_with_alignment_retry()
     print("== 3/4 export parquet")
@@ -363,6 +369,14 @@ def main() -> None:
         "build",
         help="dbt build; refetches and retries once if only the alignment test failed (INC-010)",
     )
+    news = sub.add_parser(
+        "news", help="load and classify public energy-news headlines (optional enrichment)"
+    )
+    news.add_argument("--feeds", default=None, help="comma-separated feed URLs (default: built-in)")
+    news.add_argument("--limit", type=int, default=0, help="max headlines to process (0 = all)")
+    news.add_argument(
+        "--preview", action="store_true", help="print classified headlines as JSON, store nothing"
+    )
     sub.add_parser(
         "summary",
         help="print a Markdown metrics summary of the marts (used on CI run pages)",
@@ -402,6 +416,16 @@ def main() -> None:
         refresh()
     elif args.command == "build":
         build_with_alignment_retry()
+    elif args.command == "news":
+        from .news import load_news, preview_news
+
+        feeds = (
+            [url.strip() for url in args.feeds.split(",") if url.strip()] if args.feeds else None
+        )
+        if args.preview:
+            preview_news(feeds=feeds, limit=args.limit)
+        else:
+            load_news(feeds=feeds, limit=args.limit)
     elif args.command == "summary":
         try:
             print(report.summary_markdown())

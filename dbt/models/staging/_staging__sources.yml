@@ -21,3 +21,7 @@ sources:
         freshness: null
       - name: openmeteo_weather
         description: "Open-Meteo ERA5 reanalysis for the De Bilt grid cell (keyless interim weather source, INC-006). Same contract as knmi_weather; station=0 is the reanalysis sentinel."
+      - name: news_headlines
+        description: "Public energy-news headlines with classified topics (optional enrichment; empty unless the news load ran). Natural key is (source, link)."
+        # No cadence expectation: the enrichment is optional and may be skipped.
+        freshness: null

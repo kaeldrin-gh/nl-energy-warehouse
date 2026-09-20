@@ -48,6 +48,18 @@ CREATE TABLE IF NOT EXISTS raw.ingest_log (
     window_end TIMESTAMP,
     rows_written BIGINT
 );
+
+CREATE TABLE IF NOT EXISTS raw.news_headlines (
+    source VARCHAR NOT NULL,
+    link VARCHAR NOT NULL,
+    title VARCHAR NOT NULL,
+    published_ts TIMESTAMP,
+    category VARCHAR,
+    confidence DOUBLE,
+    model VARCHAR,
+    fetched_at TIMESTAMP NOT NULL,
+    PRIMARY KEY (source, link)
+);
 """
 
 

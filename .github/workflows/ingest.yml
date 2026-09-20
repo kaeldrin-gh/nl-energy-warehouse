@@ -34,6 +34,11 @@ jobs:
         if: env.ENTSOE_TOKEN != ''
         run: python -m ingest.cli load
 
+      - name: Load energy-news headlines (optional enrichment)
+        if: always() && env.ENTSOE_TOKEN != ''
+        continue-on-error: true
+        run: python -m ingest.cli news
+
       # always() keeps these running even when a source failed mid-load: a
       # partial batch still ships its build, export and artifact. The failed
       # load step keeps the run red so the alert fires.
