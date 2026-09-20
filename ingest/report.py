@@ -439,6 +439,11 @@ Comparisons use the previous 7-day window; lower price deltas are green.</p>
 <img src="data:image/png;base64,{_negative_price_hours(daily)}">
 <h2>Cross-source alignment</h2>
 <img src="data:image/png;base64,{_cross_source_diff(hourly)}">
+
+<p class="sub">Part of a three-project portfolio:
+<a href="https://github.com/kaeldrin-gh/nl-energy-warehouse">nl-energy-warehouse</a> ·
+<a href="https://github.com/kaeldrin-gh/de-energy-streaming">de-energy-streaming</a> ·
+<a href="https://github.com/kaeldrin-gh/databricks-energy-quality">databricks-energy-quality</a>.</p>
 </body></html>"""
 
     out = out_path or (settings.root / "exports" / "report.html")

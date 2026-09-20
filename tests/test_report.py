@@ -25,6 +25,8 @@ def test_report_contains_all_sections(report_path):
         "Market calendar",
         "generated",
         "data:image/png",
+        "Part of a three-project portfolio",
+        "databricks-energy-quality",
     ):
         assert fragment in html, f"report is missing section: {fragment}"
 
