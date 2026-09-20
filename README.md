@@ -4,6 +4,8 @@
 [![docs](https://github.com/kaeldrin-gh/nl-energy-warehouse/actions/workflows/docs.yml/badge.svg)](https://github.com/kaeldrin-gh/nl-energy-warehouse/actions/workflows/docs.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
+**[Live market report](https://kaeldrin-gh.github.io/nl-energy-warehouse/report.html)** — price metrics, charts and news topics, rebuilt daily · **[dbt data catalog](https://kaeldrin-gh.github.io/nl-energy-warehouse/)** — lineage, column docs and test coverage
+
 A data warehouse for Dutch electricity prices and weather, built to answer one
 question: what drives the hourly power price in the Netherlands, and when is it
 cheap?
