@@ -171,6 +171,27 @@ every CI run against both targets (DuckDB and PostgreSQL). The same YAML works
 against a hosted Snowflake Semantic Layer; local querying through the `mf` CLI
 is pending dbt-metricflow support for current dbt versions.
 
+## API (read-only)
+
+`api/main.py` serves the marts over HTTP for tools that should not open DuckDB
+directly:
+
+```bash
+pip install -e ".[api]"
+uvicorn api.main:app --reload          # interactive docs at /docs
+curl "localhost:8000/prices/daily?limit=3"
+```
+
+| Endpoint | Returns |
+| --- | --- |
+| `GET /health` | 200 when the warehouse file exists, 503 otherwise |
+| `GET /prices/daily?start=&end=&limit=` | daily aggregates from `mart_daily_summary`, newest first |
+| `GET /prices/hourly?date=YYYY-MM-DD` | every hour of one local date from `fct_hourly_price_weather` |
+
+The service resolves the warehouse like the rest of the repo (`DUCKDB_PATH`,
+default `warehouse/energy.duckdb`), opens it read-only, never writes, and its
+endpoints are covered by `tests/test_api.py`.
+
 ## CI/CD
 
 Three workflows in `.github/workflows/`:
