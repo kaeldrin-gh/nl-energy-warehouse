@@ -25,11 +25,13 @@ semantic_models:
         expr: radiation_jm2
     dimensions:
       - name: delivery_hour
+        description: "Delivery hour in local time (Europe/Amsterdam); the default time axis."
         type: time
         type_params:
           time_granularity: hour
         expr: hour_local
       - name: local_date
+        description: "Local calendar date (Europe/Amsterdam) for daily slices."
         type: categorical
         expr: "cast(hour_local as date)"
 
@@ -40,6 +42,9 @@ metrics:
     type: simple
     type_params:
       measure: average_price
+    meta:
+      owner: kaeldrin-gh
+      consumers: "report, powerbi, bi_queries"
 
   - name: negative_price_hours
     label: "Negative price hours"
@@ -47,6 +52,9 @@ metrics:
     type: simple
     type_params:
       measure: negative_hours
+    meta:
+      owner: kaeldrin-gh
+      consumers: "report, powerbi, bi_queries"
 
   - name: total_radiation
     label: "Total global radiation (J/m2)"
@@ -54,3 +62,6 @@ metrics:
     type: simple
     type_params:
       measure: radiation_total
+    meta:
+      owner: kaeldrin-gh
+      consumers: "report, powerbi"

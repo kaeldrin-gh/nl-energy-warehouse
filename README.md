@@ -160,9 +160,12 @@ for but not executed yet.
 
 `dbt/models/semantics.yml` exposes the marts through the dbt Semantic Layer: one
 hourly semantic model with three metrics (`avg_day_ahead_price`,
-`negative_price_hours`, `total_radiation`), validated on every CI run. The same
-YAML works against a hosted Snowflake Semantic Layer; local querying through the
-`mf` CLI is pending dbt-metricflow support for current dbt versions.
+`negative_price_hours`, `total_radiation`). What each metric means, how it is
+computed and who consumes it is written down in
+[docs/metrics.md](docs/metrics.md); the semantic layer is parsed and built on
+every CI run against both targets (DuckDB and PostgreSQL). The same YAML works
+against a hosted Snowflake Semantic Layer; local querying through the `mf` CLI
+is pending dbt-metricflow support for current dbt versions.
 
 ## CI/CD
 
