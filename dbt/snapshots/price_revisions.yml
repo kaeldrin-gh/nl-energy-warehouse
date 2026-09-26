@@ -1,0 +1,19 @@
+version: 2
+
+snapshots:
+  - name: price_revisions
+    description: >-
+      SCD2 history of the ENTSO-E day-ahead prices. Every time a delivery hour is
+      revised upstream (a newer fetched_at), the previous row is closed
+      (dbt_valid_to) and a new current row is opened. History starts at the first
+      snapshot run; the raw table keeps only the newest revision per hour.
+    columns:
+      - name: hour_utc
+        description: "Delivery hour in UTC; the SCD2 natural key."
+        tests: [not_null]
+      - name: price_eur_mwh
+        tests: [not_null]
+      - name: dbt_valid_from
+        tests: [not_null]
+      - name: dbt_valid_to
+        description: "NULL while this revision is the current one."

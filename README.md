@@ -119,6 +119,10 @@ Open-Meteo    (ERA5)    ─┘         (KNMI station ingester ready; its legacy
   cross-source diff and provenance flags) and `mart_daily_summary`, both
   incremental with a revision-matched reprocessing window. ENTSO-E is
   authoritative; energy-charts fills unpublished hours as a flagged fallback.
+- History: `snapshots/price_revisions.sql` snapshots the deduplicated staging
+  view into an SCD2 table (`dbt_valid_from`/`dbt_valid_to`), so every upstream
+  revision of a delivery hour stays queryable. History starts at the first
+  snapshot run; the raw table itself keeps only the newest revision per hour.
 
 ## Quickstart
 
