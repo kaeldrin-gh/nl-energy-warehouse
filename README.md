@@ -255,6 +255,8 @@ python -m pytest tests -v
 - Determinism tests: the sample generator is byte-identical for a given seed
 - DST integration tests: full dbt builds over synthetic spring and autumn
   transition days, asserting no duplicate hours
+- API tests: the read-only FastAPI endpoints (health, ordering, date filters,
+  validation) are exercised against the built sample warehouse
 
 ## License
 
