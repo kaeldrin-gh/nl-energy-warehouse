@@ -10,6 +10,10 @@ on:
 env:
   ENTSOE_TOKEN: ${{ secrets.ENTSOE_TOKEN }}
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   ingest:
     runs-on: ubuntu-latest
@@ -78,3 +82,24 @@ jobs:
           name: mart-exports
           path: exports/
           retention-days: 7
+
+      # Alerting: open one issue per incident. While an issue is still open the
+      # run stays red but no duplicate is created, so a flapping source cannot
+      # spam the tracker.
+      - name: Open an issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create ingest-failure --color B60205 \
+            --description "A scheduled ingest run failed" --force || true
+          open_count=$(gh issue list --repo "$GITHUB_REPOSITORY" \
+            --label ingest-failure --state open --json number --jq 'length')
+          if [ "$open_count" -gt 0 ]; then
+            echo "an open ingest-failure issue exists; not creating another"
+            exit 0
+          fi
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --label ingest-failure \
+            --title "Scheduled ingest failed ($(date -u +%Y-%m-%d))" \
+            --body "The scheduled ingest run failed. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID - first checks are in the README section 'When something breaks'."
