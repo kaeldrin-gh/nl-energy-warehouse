@@ -1,7 +1,8 @@
 {{ config(
     materialized='incremental',
     unique_key='local_date',
-    incremental_strategy='delete+insert'
+    incremental_strategy='delete+insert',
+    on_schema_change='append_new_columns'
 ) }}
 
 select

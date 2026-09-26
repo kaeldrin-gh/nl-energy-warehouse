@@ -174,6 +174,8 @@ Three workflows in `.github/workflows/`:
 - **ci**: ruff, the full pytest suite (including DST integration tests that run
   complete dbt builds), a sample-data `dbt build` with source freshness, and
   `validate-postgres`, which builds the same project against PostgreSQL 17.
+  The two marts are contract-enforced (`contract: enforced: true`), so a column
+  or type change that would break consumers fails both builds.
 - **docs**: regenerates the dbt documentation site and, on the daily schedule,
   builds the live market report (price metrics and news topics) from the marts;
   both deploy to
@@ -186,6 +188,8 @@ Three workflows in `.github/workflows/`:
   fails (INC-010) and renders a metrics table on the run page, with
   `report.html` in the artifact.
   Skips cleanly when the `ENTSOE_TOKEN` secret is absent, so forks stay green.
+  A failed run opens one GitHub issue (deduplicated while an issue is open), so
+  an outage cannot pass silently.
 
 Pre-commit hooks mirror the lint job: `pre-commit install`.
 

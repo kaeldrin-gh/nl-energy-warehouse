@@ -3,27 +3,90 @@ version: 2
 models:
   - name: fct_hourly_price_weather
     description: "One row per delivery hour: primary price, cross-source price, and weather. Grain: hour_utc."
+    config:
+      contract:
+        enforced: true
     columns:
       - name: hour_utc
+        description: "Delivery hour in UTC; the natural key of the fact."
+        data_type: timestamp
         tests: [unique, not_null]
+      - name: hour_local
+        description: "Same hour in Europe/Amsterdam local time."
+        data_type: timestamp
+        tests: [not_null]
+      - name: price_eur_mwh
+        description: "Primary day-ahead price for the hour."
+        data_type: double precision
+        tests: [not_null]
+      - name: price_eur_mwh_cross_source
+        description: "The other source's price for the same hour, when both published it."
+        data_type: double precision
+      - name: price_diff_eur
+        description: "Absolute difference between the two sources; the alignment test keeps it within 2 EUR/MWh."
+        data_type: double precision
       - name: price_source
         description: "Which source supplied the primary price: 'entsoe' (authoritative) or 'energycharts' (fallback for hours ENTSO-E has not published)."
+        data_type: text
         tests:
           - not_null
           - accepted_values:
               values: ['entsoe', 'energycharts']
+      - name: has_weather_match
+        description: "True when a weather observation or reanalysis row joined this hour."
+        data_type: boolean
+        tests: [not_null]
       - name: weather_source
         description: "Which source supplied the weather: 'knmi' (station observations) or 'openmeteo' (ERA5 reanalysis fallback)."
-      - name: price_eur_mwh
-        tests: [not_null]
+        data_type: text
+      - name: temp_c
+        description: "Air temperature in degrees Celsius."
+        data_type: double precision
+      - name: wind_ms
+        description: "Wind speed in metres per second."
+        data_type: double precision
+      - name: radiation_jm2
+        description: "Global radiation in joules per square metre."
+        data_type: double precision
+      - name: hour_local_label
+        description: "KNMI's 1-24 local hour label; nullable when the hour has no weather match."
+        data_type: bigint
       - name: is_negative_price
+        description: "True when the primary price is below zero."
+        data_type: boolean
         tests: [not_null]
 
   - name: mart_daily_summary
     description: "Local-day aggregates for BI consumption. Grain: local_date (Europe/Amsterdam)."
+    config:
+      contract:
+        enforced: true
     columns:
       - name: local_date
+        description: "Local calendar date."
+        data_type: date
         tests: [unique, not_null]
+      - name: hours_in_day
+        description: "Delivery hours present for that date (24, or 23/25 on DST days)."
+        data_type: bigint
+        tests: [not_null]
+      - name: avg_price_eur_mwh
+        data_type: double precision
+      - name: min_price_eur_mwh
+        data_type: double precision
+      - name: max_price_eur_mwh
+        data_type: double precision
+      - name: negative_price_hours
+        description: "Hours that day whose price was below zero."
+        data_type: bigint
+        tests: [not_null]
+      - name: avg_temp_c
+        data_type: double precision
+      - name: max_wind_ms
+        data_type: double precision
+      - name: total_radiation_mj_m2
+        description: "Daily global radiation in megajoules per square metre."
+        data_type: double precision
 
 exposures:
   - name: powerbi_nl_energy_dashboard
