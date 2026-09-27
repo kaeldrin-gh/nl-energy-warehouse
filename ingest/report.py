@@ -47,6 +47,11 @@ def _load_data(duckdb_path: Path | None):
     return daily, hourly, health
 
 
+def _ts(value) -> str:
+    """Minute-precision timestamp for tables; a dash when there is none (e.g. news)."""
+    return "–" if pd.isna(value) else f"{pd.Timestamp(value):%Y-%m-%d %H:%M}"
+
+
 def _week_frame(frame: pd.DataFrame, date_col: str, last_date, offset_days: int, days: int = 7):
     start = last_date - pd.Timedelta(days=offset_days)
     end = start + pd.Timedelta(days=days)
@@ -131,7 +136,7 @@ def _weekly_table(this: pd.DataFrame, avg_prev: float) -> str:
     )
 
 
-def _month_table(daily: pd.DataFrame, months: int = 12) -> str:
+def _month_table(daily: pd.DataFrame, months: int = 12) -> tuple[str, int]:
     frame = daily.copy()
     frame["month"] = frame["local_date"].dt.to_period("M").astype(str)
     agg = (
@@ -144,10 +149,11 @@ def _month_table(daily: pd.DataFrame, months: int = 12) -> str:
         f"<tr><td>{r.month}</td><td>{r.avg_price:.2f}</td><td>{int(r.neg_hours)}</td></tr>"
         for r in agg.itertuples()
     )
-    return (
+    table = (
         "<table><tr><th>month</th><th>avg price (EUR/MWh)</th><th>negative hours</th></tr>"
         f"{rows}</table>"
     )
+    return table, len(agg)
 
 
 def _daily_price_vs_temp(daily: pd.DataFrame) -> str:
@@ -304,7 +310,7 @@ def summary_markdown(duckdb_path: Path | None = None) -> str:
         "| --- | --- | --- | ---: |",
     ]
     lines += [
-        f"| {row.source} | {row.last_run} | {row.data_through} | {int(row.rows_total):,} |"
+        f"| {row.source} | {_ts(row.last_run)} | {_ts(row.data_through)} | {int(row.rows_total):,} |"
         for row in health.itertuples()
     ]
     if news is not None:
@@ -331,19 +337,20 @@ def generate(out_path: Path | None = None, duckdb_path: Path | None = None) -> P
 
     corr = hourly[["price_eur_mwh", "temp_c", "wind_ms", "radiation_jm2"]].corr()
     stats = {
-        "price vs temp": corr.loc["price_eur_mwh", "temp_c"],
-        "price vs wind": corr.loc["price_eur_mwh", "wind_ms"],
-        "price vs radiation": corr.loc["price_eur_mwh", "radiation_jm2"],
-        "mean cross-source diff": hourly["price_diff_eur"].mean(),
-        "hours covered": len(hourly),
+        "correlation: price vs temperature": f"{corr.loc['price_eur_mwh', 'temp_c']:.2f}",
+        "correlation: price vs wind": f"{corr.loc['price_eur_mwh', 'wind_ms']:.2f}",
+        "correlation: price vs radiation": f"{corr.loc['price_eur_mwh', 'radiation_jm2']:.2f}",
+        "mean cross-source diff": f"{hourly['price_diff_eur'].mean():.2f} EUR/MWh",
+        "hours covered": f"{len(hourly):,}",
     }
     stat_rows = "".join(
-        f"<tr><td>{name}</td><td>{value:.3f}</td></tr>" for name, value in stats.items()
+        f"<tr><td>{name}</td><td>{value}</td></tr>" for name, value in stats.items()
     )
+    month_table, month_count = _month_table(daily)
 
     health_rows = "".join(
-        f"<tr><td>{r.source}</td><td>{r.last_run}</td><td>{r.data_through}</td>"
-        f"<td>{r.rows_total:,}</td><td>{r.runs}</td></tr>"
+        f"<tr><td>{r.source}</td><td>{_ts(r.last_run)}</td><td>{_ts(r.data_through)}</td>"
+        f"<td>{int(r.rows_total):,}</td><td>{int(r.runs)}</td></tr>"
         for r in health.itertuples()
     )
 
@@ -425,11 +432,11 @@ Comparisons use the previous 7-day window; lower price deltas are green.</p>
 </table>
 {news_section}
 
-<h2>Headline stats (full history)</h2>
+<h2>Headline stats (whole coverage window)</h2>
 <table><tr><th>metric</th><th>value</th></tr>{stat_rows}</table>
 
-<h2>Market calendar (last 12 months)</h2>
-{_month_table(daily)}
+<h2>Market calendar (last {month_count} months)</h2>
+{month_table}
 
 <h2>Daily price vs temperature</h2>
 <img src="data:image/png;base64,{_daily_price_vs_temp(daily)}">

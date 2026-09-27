@@ -43,11 +43,20 @@ jobs:
       # Scheduled/manual live builds feed the report from the real market.
       # Pushes and forks without the token use the deterministic sample, so the
       # catalog always deploys.
+      #
+      # The runner starts with an empty warehouse, and an incremental load only
+      # reaches back 30 days, so live builds first backfill 13 months (enough
+      # for the report's monthly table). The backfill is best-effort: if a
+      # source fails partway, the incremental load still runs and the report
+      # header states the coverage that actually loaded.
       - name: Load data (live on schedule/manual, sample otherwise)
         id: load
         run: |
           if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.live }}" = "true" ]; then
             if [ -n "$ENTSOE_TOKEN" ]; then
+              python -m ingest.cli load --backfill --from "$(date -u -d '13 months ago' +%Y-%m-01)" \
+                --sources entsoe,energycharts,openmeteo \
+                || echo "::warning::13-month backfill incomplete; the report covers what loaded"
               python -m ingest.cli load
               echo "live=1" >> "$GITHUB_OUTPUT"
               exit 0

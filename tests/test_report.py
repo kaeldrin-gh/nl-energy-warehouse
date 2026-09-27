@@ -1,7 +1,9 @@
 """Report generation tests: sections present, weekly math consistent."""
 
+import re
 import sys
 
+import pandas as pd
 import pytest
 from conftest import REPO_ROOT
 
@@ -78,3 +80,37 @@ def test_summary_and_report_include_news_when_present(built_sample_warehouse, tm
 
     html = report.generate(out_path=tmp_path / "report.html", duckdb_path=built_sample_warehouse)
     assert "News context" in html.read_text(encoding="utf-8")
+
+
+def test_report_tables_are_formatted_for_readers(built_sample_warehouse, tmp_path):
+    """No raw pandas output on the public page: NaT, microseconds, float counts."""
+    conn = db.connect(built_sample_warehouse)
+    # A news run logs no data window; a live run logs microsecond timestamps.
+    conn.execute(
+        "insert into raw.ingest_log values ('news', '2026-09-26 17:56:58.940525', null, null, 100)"
+    )
+    conn.close()
+
+    out = report.generate(out_path=tmp_path / "report.html", duckdb_path=built_sample_warehouse)
+    health = out.read_text(encoding="utf-8").split("<h2>Pipeline health</h2>")[1]
+    health = health.split("</table>")[0]
+
+    assert "<td>news</td><td>2026-09-26 17:56</td><td>–</td><td>100</td><td>1</td>" in health
+
+    assert "NaT" not in health and "None" not in health
+    assert not re.search(r"\d{2}:\d{2}:\d{2}\.\d+", health), "timestamps carry microseconds"
+    assert not re.search(r"<td>\d[\d,]*\.0</td>", health), "counts rendered as floats"
+
+
+def test_timestamp_cells_drop_microseconds_and_show_a_dash_when_missing():
+    assert report._ts(pd.Timestamp("2026-09-26 17:56:51.422406")) == "2026-09-26 17:56"
+    assert report._ts(pd.NaT) == "–"
+    assert report._ts(None) == "–"
+
+
+def test_report_month_heading_matches_rows(report_path):
+    html = report_path.read_text(encoding="utf-8")
+    heading = re.search(r"Market calendar \(last (\d+) months\)", html)
+    table = html.split(heading.group(0))[1].split("</table>")[0]
+
+    assert int(heading.group(1)) == table.count("<tr>") - 1
