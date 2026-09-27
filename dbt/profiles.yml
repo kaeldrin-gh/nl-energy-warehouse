@@ -7,17 +7,6 @@ nl_energy:
       settings:
         TimeZone: UTC
 
-    snowflake:
-      type: snowflake
-      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
-      user: "{{ env_var('SNOWFLAKE_USER') }}"
-      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
-      role: "{{ env_var('SNOWFLAKE_ROLE', 'TRANSFORMER') }}"
-      database: "{{ env_var('SNOWFLAKE_DATABASE', 'ENERGY') }}"
-      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'TRANSFORM_XS') }}"
-      schema: analytics
-      threads: 4
-
     postgres:
       type: postgres
       host: "{{ env_var('PGHOST', 'localhost') }}"
