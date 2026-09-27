@@ -75,6 +75,36 @@ about 19 consecutive sub-zero hours:
 
 ![Negative-price hours per day](docs/images/02_negative_hours.png)
 
+## Architecture
+
+```mermaid
+flowchart LR
+    E["ENTSO-E (XML API)"] --> I["ingest/ (Python, idempotent upserts)"]
+    C["energy-charts (JSON)"] --> I
+    O["Open-Meteo (ERA5)"] --> I
+    K["KNMI (ingester ready, endpoint retired: INC-006)"] -.-> I
+    I --> R[("DuckDB raw")]
+    R --> D["dbt: staging → intermediate → marts"]
+    D --> T["tests + CI (GitHub Actions)"]
+    D --> BI["Power BI, report.html, FastAPI, findings.md"]
+    D --> SN[("SCD2 snapshot: price_revisions")]
+```
+
+- Ingestion: watermark plus a fixed lookback window, so revisions inside the
+  window overwrite stale values (`INSERT OR REPLACE` on natural keys). Backfills
+  run in chunks with retry and backoff, and every run is logged to `raw.ingest_log`.
+- Staging: deduplication to the latest revision, weather local-hour to UTC
+  conversion with explicit DST semantics, and a unified weather feed that prefers
+  KNMI observations over the Open-Meteo reanalysis.
+- Marts: `fct_hourly_price_weather` (one row per UTC hour with price, weather,
+  cross-source diff and provenance flags) and `mart_daily_summary`, both
+  incremental with a revision-matched reprocessing window. ENTSO-E is
+  authoritative; energy-charts fills unpublished hours as a flagged fallback.
+- History: `snapshots/price_revisions.sql` snapshots the deduplicated staging
+  view into an SCD2 table (`dbt_valid_from`/`dbt_valid_to`), so every upstream
+  revision of a delivery hour stays queryable. History starts at the first
+  snapshot run; the raw table itself keeps only the newest revision per hour.
+
 ## News context (optional)
 
 `python -m ingest.cli news` fetches public Dutch energy-news headlines (Solar
@@ -92,37 +122,6 @@ The enrichment is optional and fails soft: a broken feed is skipped, a
 classifier outage stores the headline unclassified (the next run fixes it), and
 nothing in the price pipeline depends on it. `NEWS_FEEDS` and `CLASSIFIER_URL`
 override the defaults (see `.env.example`).
-
-## Architecture
-
-```
-ENTSO-E      (XML API)  ─┐
-energy-charts (JSON)    ─┼─> ingest/ (Python, idempotent upserts) ─> DuckDB raw
-Open-Meteo    (ERA5)    ─┘         (KNMI station ingester ready; its legacy
-                                   endpoint was retired mid-project: INC-006)
-                                                       │
-                                                       v
-                                   dbt: staging -> intermediate -> marts
-                                                       │
-                                       tests + CI (GitHub Actions)
-                                                       │
-                                   BI, report.html, analysis/findings.md
-```
-
-- Ingestion: watermark plus a fixed lookback window, so revisions inside the
-  window overwrite stale values (`INSERT OR REPLACE` on natural keys). Backfills
-  run in chunks with retry and backoff, and every run is logged to `raw.ingest_log`.
-- Staging: deduplication to the latest revision, weather local-hour to UTC
-  conversion with explicit DST semantics, and a unified weather feed that prefers
-  KNMI observations over the Open-Meteo reanalysis.
-- Marts: `fct_hourly_price_weather` (one row per UTC hour with price, weather,
-  cross-source diff and provenance flags) and `mart_daily_summary`, both
-  incremental with a revision-matched reprocessing window. ENTSO-E is
-  authoritative; energy-charts fills unpublished hours as a flagged fallback.
-- History: `snapshots/price_revisions.sql` snapshots the deduplicated staging
-  view into an SCD2 table (`dbt_valid_from`/`dbt_valid_to`), so every upstream
-  revision of a delivery hour stays queryable. History starts at the first
-  snapshot run; the raw table itself keeps only the newest revision per hour.
 
 ## Quickstart
 
@@ -157,8 +156,7 @@ Open-Meteo weather while the KNMI migration is pending (INC-006).
 wherever they overlap.
 
 Everything runs locally on DuckDB, and the same dbt project is validated against
-PostgreSQL 17 in CI. A Snowflake profile stub is included; porting was designed
-for but not executed yet.
+PostgreSQL 17 in CI.
 
 ## Semantic layer
 
@@ -167,9 +165,8 @@ hourly semantic model with three metrics (`avg_day_ahead_price`,
 `negative_price_hours`, `total_radiation`). What each metric means, how it is
 computed and who consumes it is written down in
 [docs/metrics.md](docs/metrics.md); the semantic layer is parsed and built on
-every CI run against both targets (DuckDB and PostgreSQL). The same YAML works
-against a hosted Snowflake Semantic Layer; local querying through the `mf` CLI
-is pending dbt-metricflow support for current dbt versions.
+every CI run against both targets (DuckDB and PostgreSQL). Local querying
+through the `mf` CLI is pending dbt-metricflow support for current dbt versions.
 
 ## API (read-only)
 

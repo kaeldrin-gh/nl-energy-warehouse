@@ -99,7 +99,7 @@ The README claimed "the models are plain SQL and were written to port." The firs
 
 None of these produce wrong data on DuckDB; all four produce a broken project everywhere else. "Written to port" is a runtime property, not a hope.
 
-**Detection**: a `validate-postgres` CI job - Postgres 17 as a service container, seeded with the same deterministic sample raw data, running the identical dbt project with `--target postgres`. Every dialect failure surfaced as a compile error at 13:24 UTC on the first push, not during a hypothetical Snowflake migration two years later.
+**Detection**: a `validate-postgres` CI job - Postgres 17 as a service container, seeded with the same deterministic sample raw data, running the identical dbt project with `--target postgres`. Every dialect failure surfaced as a compile error at 13:24 UTC on the first push, not during a hypothetical warehouse migration two years later.
 
 **Design response**:
 - Portable idioms adopted project-wide: subquery dedup instead of `QUALIFY`, quoted interval literals, epoch-based gap math.
