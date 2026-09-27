@@ -16,6 +16,12 @@ exports automatically).
    and relate `Date[Date]` → `Hourly[date_key]`.
 5. Format: `price_*` as EUR, one decimal; percentages one decimal.
 
+The committed `.pbix` uses the DAX calendar from step 3. The warehouse also
+exports its own date table, `exports/dim_date.parquet`; to use it instead,
+import it as `Date`, mark `local_date` as the date column, and relate
+`Date[local_date]` → `Daily[local_date]` and → `Hourly[date_key]`. It adds ISO
+week, weekday and `hours_in_day`, which flags the 23- and 25-hour DST days.
+
 ## Measures
 
 ```dax

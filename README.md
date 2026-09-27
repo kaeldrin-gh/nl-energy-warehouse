@@ -100,6 +100,12 @@ flowchart LR
   cross-source diff and provenance flags) and `mart_daily_summary`, both
   incremental with a revision-matched reprocessing window. ENTSO-E is
   authoritative; energy-charts fills unpublished hours as a flagged fallback.
+- Date dimension: `dim_date` has one row per calendar date (2020-2035) with
+  ISO week, weekday and `hours_in_day` (23 or 25 on the Europe/Amsterdam DST
+  change days). It joins `mart_daily_summary` on `local_date` and the hourly
+  fact on `cast(hour_local as date)`, so BI tools can use it as their date
+  table. Tests check one 23-hour and one 25-hour day per year, and that no day
+  in the mart holds more hours than the calendar allows.
 - History: `snapshots/price_revisions.sql` snapshots the deduplicated staging
   view into an SCD2 table (`dbt_valid_from`/`dbt_valid_to`), so every upstream
   revision of a delivery hour stays queryable. History starts at the first
@@ -196,8 +202,9 @@ Three workflows in `.github/workflows/`:
 - **ci**: ruff, the full pytest suite (including DST integration tests that run
   complete dbt builds), a sample-data `dbt build` with source freshness, and
   `validate-postgres`, which builds the same project against PostgreSQL 17.
-  The two marts are contract-enforced (`contract: enforced: true`), so a column
-  or type change that would break consumers fails both builds.
+  The two marts and `dim_date` are contract-enforced
+  (`contract: enforced: true`), so a column or type change that would break
+  consumers fails both builds.
 - **docs**: regenerates the dbt documentation site and, on the daily schedule,
   builds the live market report (price metrics and news topics) from the marts;
   both deploy to

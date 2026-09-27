@@ -191,7 +191,7 @@ def export_marts(out_dir: Path | None = None, duckdb_path: Path | None = None) -
     conn = db.connect(duckdb_path)
     out = out_dir or (settings.root / "exports")
     out.mkdir(parents=True, exist_ok=True)
-    for table in ("fct_hourly_price_weather", "mart_daily_summary"):
+    for table in ("fct_hourly_price_weather", "mart_daily_summary", "dim_date"):
         built = conn.execute(
             "select 1 from information_schema.tables "
             "where table_schema = 'main' and table_name = ?",

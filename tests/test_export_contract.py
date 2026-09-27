@@ -35,6 +35,21 @@ EXPECTED = {
         "max_wind_ms": "float64",
         "total_radiation_mj_m2": "float64",
     },
+    "dim_date": {
+        "local_date": "datetime64[us]",
+        "year": "int64",
+        "quarter": "int64",
+        "month": "int64",
+        "month_name": "str",
+        "day_of_month": "int64",
+        "iso_year": "int64",
+        "iso_week": "int64",
+        "iso_day_of_week": "int64",
+        "day_name": "str",
+        "is_weekend": "bool",
+        "hours_in_day": "int64",
+        "is_dst_change_day": "bool",
+    },
 }
 
 

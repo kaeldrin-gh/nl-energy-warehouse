@@ -65,7 +65,12 @@ models:
       - name: local_date
         description: "Local calendar date."
         data_type: date
-        tests: [unique, not_null]
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: local_date
       - name: hours_in_day
         description: "Delivery hours present for that date (24, or 23/25 on DST days)."
         data_type: bigint
@@ -87,6 +92,74 @@ models:
       - name: total_radiation_mj_m2
         description: "Daily global radiation in megajoules per square metre."
         data_type: double precision
+
+  - name: dim_date
+    description: >
+      Conformed date dimension, one row per calendar date from 2020 to 2035.
+      Joins mart_daily_summary on local_date and fct_hourly_price_weather on
+      cast(hour_local as date). hours_in_day follows Europe/Amsterdam DST.
+      Grain: local_date.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: local_date
+        description: "Calendar date; the key other models join on."
+        data_type: date
+        tests: [unique, not_null]
+      - name: year
+        data_type: bigint
+        tests: [not_null]
+      - name: quarter
+        data_type: bigint
+        tests: [not_null]
+      - name: month
+        description: "Month number, 1-12."
+        data_type: bigint
+        tests: [not_null]
+      - name: month_name
+        description: "English month name, for example 'March'."
+        data_type: text
+        tests: [not_null]
+      - name: day_of_month
+        data_type: bigint
+        tests: [not_null]
+      - name: iso_year
+        description: "ISO 8601 week-numbering year; differs from year in the first and last days of some years."
+        data_type: bigint
+        tests: [not_null]
+      - name: iso_week
+        description: "ISO 8601 week number, 1-53."
+        data_type: bigint
+        tests: [not_null]
+      - name: iso_day_of_week
+        description: "ISO 8601 day of week: 1 = Monday, 7 = Sunday."
+        data_type: bigint
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5, 6, 7]
+              quote: false
+      - name: day_name
+        description: "English day name, for example 'Sunday'."
+        data_type: text
+        tests: [not_null]
+      - name: is_weekend
+        description: "True on Saturday and Sunday."
+        data_type: boolean
+        tests: [not_null]
+      - name: hours_in_day
+        description: "Length of the Europe/Amsterdam day in hours: 24, or 23/25 on DST change days."
+        data_type: bigint
+        tests:
+          - not_null
+          - accepted_values:
+              values: [23, 24, 25]
+              quote: false
+      - name: is_dst_change_day
+        description: "True when hours_in_day is not 24."
+        data_type: boolean
+        tests: [not_null]
 
 exposures:
   - name: powerbi_nl_energy_dashboard
