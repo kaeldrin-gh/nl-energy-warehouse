@@ -9,8 +9,11 @@ exports automatically).
 1. **Get data → Parquet** → `exports/mart_daily_summary.parquet`. Name the table
    `Daily`.
 2. Repeat for `exports/fct_hourly_price_weather.parquet` → table `Hourly`.
-3. Create a date table (`Date = CALENDAR(DATE(2024,8,1), TODAY())`), mark it
-   as date table, relate `Date[Date]` → `Daily[local_date]` (1:*).
+3. Create a date table that spans exactly the loaded days
+   (`Date = CALENDAR ( MIN ( Daily[local_date] ), MAX ( Daily[local_date] ) )`),
+   mark it as date table, relate `Date[Date]` → `Daily[local_date]` (1:*).
+   Deriving the range from the data keeps it right after every refresh; a
+   fixed start date silently drops the days before it.
 4. For `Hourly`, add calculated column
    `date_key = DATE(YEAR([hour_local]), MONTH([hour_local]), DAY([hour_local]))`
    and relate `Date[Date]` → `Hourly[date_key]`.
