@@ -25,6 +25,15 @@ Managed-platform counterpart: [databricks-energy-quality](https://github.com/kae
 covers data-quality monitoring on Databricks (Unity Catalog, Delta, Lakeflow
 pipelines, Declarative Automation Bundles).
 
+## Where to look first
+
+| If you have | Read |
+| --- | --- |
+| 2 minutes | The four numbers below and the [live market report](https://kaeldrin-gh.github.io/nl-energy-warehouse/report.html) |
+| 10 minutes | [int_price_weather_hourly.sql](dbt/models/intermediate/int_price_weather_hourly.sql) (source priority and provenance), the DST handling in [stg_knmi__hourly_weather.sql](dbt/models/staging/stg_knmi__hourly_weather.sql), and [tests/test_dst_staging.py](tests/test_dst_staging.py), which builds the project over both DST nights |
+| A design discussion | [INCIDENTS.md](INCIDENTS.md): 10 postmortems, each ending in the design change it produced |
+| The dbt side | The [data catalog](https://kaeldrin-gh.github.io/nl-energy-warehouse/) (lineage, column docs, tests) and the contracts in [_marts__models.yml](dbt/models/marts/_marts__models.yml) |
+
 ## Why this repo exists
 
 Public energy data is a good engineering stress test:
