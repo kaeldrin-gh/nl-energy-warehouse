@@ -79,10 +79,16 @@ and the report file in [`powerbi/nl-energy-dashboard.pbix`](powerbi/nl-energy-da
 
 ![Dashboard overview](docs/images/04_overview.png)
 
-Solar-glut clusters concentrate in spring and summer, including days with up to
-about 19 consecutive sub-zero hours:
+Every delivery hour from January 2020 to August 2026 in one picture. The dark
+band is the 2022 gas crisis (a yearly average of €242/MWh). The blue cells are
+the hours below zero: they cluster around midday from March to September and
+multiply from 2023 on. The worst single day, 4 October 2025, had 19 of them.
 
-![Negative-price hours per day](docs/images/02_negative_hours.png)
+![Price fingerprint: every delivery hour since 2020](docs/images/06_price_fingerprint.png)
+
+This fingerprint and the day-shape chart under the headline table are generated
+from the marts by [`analysis/make_readme_charts.py`](analysis/make_readme_charts.py)
+(`--through 2026-08-26`, the findings window).
 
 ## Architecture
 
