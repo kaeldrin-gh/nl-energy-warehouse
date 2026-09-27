@@ -141,3 +141,10 @@ def test_embedded_chart_data_matches_the_marts(built_sample_warehouse, report_pa
 def test_embedded_json_cannot_close_the_script_tag():
     assert "</" not in report._json_script({"title": "</script><b>x</b>"})
     assert json.loads(report._json_script({"t": "</script>"})) == {"t": "</script>"}
+
+
+def test_money_and_missing_weather_are_formatted_for_readers():
+    assert report._eur(-0.04) == "−€0.04"
+    assert report._eur(163.931) == "€163.93"
+    assert report._one_decimal(float("nan")) == "–"
+    assert report._one_decimal(15.24) == "15.2"

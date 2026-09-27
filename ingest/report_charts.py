@@ -21,7 +21,8 @@ function tokens() {
   return {
     surface: v("--surface"), ink: v("--text-primary"), secondary: v("--text-secondary"),
     muted: v("--text-muted"), grid: v("--grid"), baseline: v("--baseline"),
-    s1: v("--series-1"), s2: v("--series-2"), rampLo: v("--ramp-lo"), rampHi: v("--ramp-hi"),
+    s1: v("--series-1"), s2: v("--series-2"), rampLo: v("--ramp-lo"), rampMid: v("--ramp-mid"),
+    rampHi: v("--ramp-hi"),
   };
 }
 
@@ -71,8 +72,9 @@ const charts = {
       x: { type: "utc", label: null },
       y: { domain: [0, 24], reverse: true, label: null,
            ticks: [0, 6, 12, 18], tickFormat: (h) => `${two(h)}:00` },
-      color: { type: "linear", domain: [0, data.fingerprint.p98], range: [t.rampLo, t.rampHi],
-               interpolate: "lab", clamp: true },
+      // Three stops keep the middle orange; a two-stop blend to dark brown turns muddy.
+      color: { type: "linear", domain: [0, data.fingerprint.p98 / 2, data.fingerprint.p98],
+               range: [t.rampLo, t.rampMid, t.rampHi], interpolate: "lab", clamp: true },
       marks: [
         Plot.rect(positive, { x1: "x1", x2: "x2", y1: "hour", y2: (d) => d.hour + 1,
                               fill: "price", shapeRendering: "crispEdges" }),
@@ -152,6 +154,7 @@ const charts = {
   wind(el, t, width) {
     const rows = data.wind.rows;
     return Plot.plot(frame(t, width, 300, {
+      marginRight: 32,
       x: { label: null, grid: true, nice: true, insetLeft: 16, tickFormat: (w) => `${w} m/s` },
       y: { label: null, grid: true, nice: true },
       marks: [

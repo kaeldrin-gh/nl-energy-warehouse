@@ -41,6 +41,15 @@ def _ts(value) -> str:
     return "–" if pd.isna(value) else f"{pd.Timestamp(value):%Y-%m-%d %H:%M}"
 
 
+def _eur(value: float) -> str:
+    """€12.34 / −€0.04: the sign goes before the currency symbol."""
+    return f"{'−' if value < 0 else ''}€{abs(value):.2f}"
+
+
+def _one_decimal(value: float) -> str:
+    return "–" if pd.isna(value) else f"{value:.1f}"
+
+
 def _week_frame(frame: pd.DataFrame, date_col: str, last_date, offset_days: int, days: int = 7):
     start = last_date - pd.Timedelta(days=offset_days)
     end = start + pd.Timedelta(days=days)
@@ -358,7 +367,8 @@ PAGE_STYLE = """
   --page: #f9f9f7; --surface: #fcfcfb; --border: rgba(11, 11, 11, 0.10);
   --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #898781;
   --grid: #e1e0d9; --baseline: #c3c2b7;
-  --series-1: #2a78d6; --series-2: #eb6834; --ramp-lo: #fbe7da; --ramp-hi: #9c3a12;
+  --series-1: #2a78d6; --series-2: #eb6834;
+  --ramp-lo: #fbe7da; --ramp-mid: #eb6834; --ramp-hi: #9c3a12;
   --good-text: #006300; --bad-text: #d03b3b;
 }
 @media (prefers-color-scheme: dark) {
@@ -367,7 +377,8 @@ PAGE_STYLE = """
     --page: #0d0d0d; --surface: #1a1a19; --border: rgba(255, 255, 255, 0.10);
     --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #898781;
     --grid: #2c2c2a; --baseline: #383835;
-    --series-1: #3987e5; --series-2: #d95926; --ramp-lo: #2a1d16; --ramp-hi: #ff9d63;
+    --series-1: #3987e5; --series-2: #d95926;
+    --ramp-lo: #2a1d16; --ramp-mid: #d95926; --ramp-hi: #ffc29a;
     --good-text: #0ca30c; --bad-text: #ef6b6b;
   }
 }
@@ -438,16 +449,16 @@ def generate(out_path: Path | None = None, duckdb_path: Path | None = None) -> P
         f"<div class='card'><div class='num' style='color:{color}'>{value}</div>"
         f"<div class='lbl'>{label}</div></div>"
         for value, label, color in [
-            (f"€{metrics['avg_this']:.2f}", "average price this week (per MWh)", "inherit"),
+            (_eur(metrics["avg_this"]), "average price this week (per MWh)", "inherit"),
             (f"{arrow} {abs(delta):.1f}%", "vs the previous week", GOOD if delta < 0 else BAD),
             (str(metrics["neg_hours_this"]), "negative-price hours this week", "inherit"),
             (
-                f"€{metrics['min_hourly']:.2f}",
+                _eur(metrics["min_hourly"]),
                 f"cheapest hour ({metrics['min_when']:%a %H:%M})",
                 "inherit",
             ),
             (
-                f"€{metrics['max_hourly']:.2f}",
+                _eur(metrics["max_hourly"]),
                 f"priciest hour ({metrics['max_when']:%a %H:%M})",
                 "inherit",
             ),
@@ -495,8 +506,8 @@ def generate(out_path: Path | None = None, duckdb_path: Path | None = None) -> P
   <div class="plot" id="chart-week"></div>
 </figure>
 {_weekly_table(this_week, metrics["avg_prev"])}
-<p class="sub">Weather this week: avg temp {metrics["avg_temp"]:.1f} °C, avg wind
-{metrics["avg_wind"]:.1f} m/s. Comparisons use the previous 7-day window; a green ▼ means
+<p class="sub">Weather this week: avg temp {_one_decimal(metrics["avg_temp"])} °C, avg wind
+{_one_decimal(metrics["avg_wind"])} m/s. Comparisons use the previous 7-day window; a green ▼ means
 cheaper than last week.</p>
 
 <h2>Price fingerprint</h2>
@@ -504,7 +515,7 @@ cheaper than last week.</p>
   <h3>Every delivery hour in the window: one column per day, one row per hour</h3>
   <div class="legend">
     <span class="key"><span class="swatch ramp"
-      style="background:linear-gradient(90deg, var(--ramp-lo), var(--ramp-hi))"></span>
+      style="background:linear-gradient(90deg, var(--ramp-lo), var(--ramp-mid), var(--ramp-hi))"></span>
       €0 to €{ramp_top:.0f}+ per MWh</span>
     <span class="key"><span class="swatch" style="background:var(--series-1)"></span>
       below €0</span>
