@@ -1,5 +1,6 @@
 """Report generation tests: sections present, weekly math consistent."""
 
+import json
 import re
 import sys
 
@@ -26,7 +27,9 @@ def test_report_contains_all_sections(report_path):
         "Headline stats",
         "Market calendar",
         "generated",
-        "data:image/png",
+        "Price fingerprint",
+        'id="report-data"',
+        "@observablehq/plot",
         "Part of a three-project portfolio",
         "databricks-energy-quality",
     ):
@@ -114,3 +117,27 @@ def test_report_month_heading_matches_rows(report_path):
     table = html.split(heading.group(0))[1].split("</table>")[0]
 
     assert int(heading.group(1)) == table.count("<tr>") - 1
+
+
+def _embedded_data(html: str) -> dict:
+    raw = html.split('<script type="application/json" id="report-data">')[1].split("</script>")[0]
+    return json.loads(raw)
+
+
+def test_embedded_chart_data_matches_the_marts(built_sample_warehouse, report_path):
+    """The browser draws from this JSON, so it has to agree with the tables beside it."""
+    data = _embedded_data(report_path.read_text(encoding="utf-8"))
+    daily, hourly, _ = report._load_data(built_sample_warehouse)
+
+    assert len(data["fingerprint"]["rows"]) == len(hourly)
+    assert {hour for _, hour, _ in data["fingerprint"]["rows"]} <= set(range(24))
+    assert len(data["week"]["rows"]) == 168
+    assert sum(r["current"] is not None for r in data["week"]["rows"]) > 0
+    assert sum(m["negative_hours"] for m in data["monthly"]) == daily["negative_price_hours"].sum()
+    assert {p["kind"] for p in data["profile"]} <= {"weekday", "weekend"}
+    assert all(set(r) == {"date", "price", "wind"} for r in data["wind"]["rows"])
+
+
+def test_embedded_json_cannot_close_the_script_tag():
+    assert "</" not in report._json_script({"title": "</script><b>x</b>"})
+    assert json.loads(report._json_script({"t": "</script>"})) == {"t": "</script>"}

@@ -1,27 +1,16 @@
-import base64
-import io
+import json
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import pandas as pd
 
 from . import db
 from .config import settings
+from .report_charts import SCRIPT
 
-RED = "#c0392b"
-GREEN = "#1e8449"
-BLUE = "#2471a3"
-GREY = "#5d6d7e"
-
-
-def _fig_to_b64(fig) -> str:
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=110, bbox_inches="tight")
-    plt.close(fig)
-    return base64.b64encode(buf.getvalue()).decode("ascii")
+# Status text for price deltas: a price drop is good for consumers. Always shown
+# with an arrow, so the color never carries the meaning alone.
+GOOD = "var(--good-text)"
+BAD = "var(--bad-text)"
 
 
 def _load_data(duckdb_path: Path | None):
@@ -90,35 +79,11 @@ def _week_metrics(daily: pd.DataFrame, hourly: pd.DataFrame):
     return metrics, this, hours_this, hours_prev
 
 
-def _week_chart(hours_this: pd.DataFrame, hours_prev: pd.DataFrame) -> str:
-    fig, ax = plt.subplots(figsize=(11.5, 3.6))
-    ax.plot(
-        hours_prev["hour_local"],
-        hours_prev["price_eur_mwh"],
-        color=GREY,
-        lw=1.2,
-        label="previous week",
-    )
-    ax.plot(
-        hours_this["hour_local"],
-        hours_this["price_eur_mwh"],
-        color=BLUE,
-        lw=1.6,
-        label="this week",
-    )
-    ax.axhline(0, color=GREY, lw=0.7, ls="--", alpha=0.6)
-    ax.set_title("Hourly price: this week vs previous week (EUR/MWh)", fontsize=11)
-    ax.set_ylabel("EUR/MWh")
-    ax.legend(fontsize=9)
-    fig.autofmt_xdate()
-    return _fig_to_b64(fig)
-
-
 def _weekly_table(this: pd.DataFrame, avg_prev: float) -> str:
     rows = []
     for r in this.itertuples():
         delta = r.avg_price_eur_mwh - avg_prev
-        color = GREEN if delta < 0 else RED
+        color = GOOD if delta < 0 else BAD
         arrow = "▼" if delta < 0 else "▲"
         rows.append(
             f"<tr><td>{r.local_date:%a %d %b}</td>"
@@ -156,51 +121,6 @@ def _month_table(daily: pd.DataFrame, months: int = 12) -> tuple[str, int]:
     return table, len(agg)
 
 
-def _daily_price_vs_temp(daily: pd.DataFrame) -> str:
-    fig, ax1 = plt.subplots(figsize=(11, 4))
-    ax1.plot(daily["local_date"], daily["avg_price_eur_mwh"], color=RED, label="avg price")
-    ax1.set_ylabel("avg price (EUR/MWh)", color=RED)
-    ax2 = ax1.twinx()
-    ax2.plot(daily["local_date"], daily["avg_temp_c"], color=BLUE, alpha=0.7, label="avg temp")
-    ax2.set_ylabel("avg temp (C)", color=BLUE)
-    ax1.set_title("Daily average price vs temperature")
-    fig.autofmt_xdate()
-    return _fig_to_b64(fig)
-
-
-def _hour_of_day_profile(hourly: pd.DataFrame) -> str:
-    profile = hourly.groupby(hourly["hour_local"].dt.hour)["price_eur_mwh"].mean()
-    fig, ax = plt.subplots(figsize=(8, 3.5))
-    ax.bar(profile.index.astype(str), profile.values, color="#7d3c98")
-    ax.set_title("Average price by hour of day (local)")
-    ax.set_xlabel("hour")
-    ax.set_ylabel("EUR/MWh")
-    return _fig_to_b64(fig)
-
-
-def _negative_price_hours(daily: pd.DataFrame) -> str:
-    neg = daily[daily["negative_price_hours"] > 0]
-    fig, ax = plt.subplots(figsize=(11, 3.2))
-    ax.bar(neg["local_date"].astype(str), neg["negative_price_hours"], color=GREEN)
-    ax.set_title("Hours with negative prices per day")
-    ax.set_ylabel("hours")
-    if len(neg) > 40:
-        ax.set_xticks([])
-    fig.autofmt_xdate()
-    return _fig_to_b64(fig)
-
-
-def _cross_source_diff(hourly: pd.DataFrame) -> str:
-    fig, ax = plt.subplots(figsize=(11, 3.2))
-    ax.plot(hourly["hour_local"], hourly["price_diff_eur"], lw=0.6, color=GREY)
-    ax.axhline(2.0, color=RED, ls="--", lw=0.8)
-    ax.axhline(-2.0, color=RED, ls="--", lw=0.8)
-    ax.set_title("Cross-source price difference (ENTSO-E vs energy-charts), EUR 2 test bound")
-    ax.set_ylabel("EUR/MWh")
-    fig.autofmt_xdate()
-    return _fig_to_b64(fig)
-
-
 def _news_stats(conn) -> tuple[pd.DataFrame, int, int] | None:
     """(energy topics, total headlines, filtered) from the staging model."""
     exists = conn.execute(
@@ -236,16 +156,6 @@ def _news_table(news: pd.DataFrame) -> str:
         f"<tr><td>{row.topic}</td><td>{int(row.headlines)}</td></tr>" for row in news.itertuples()
     )
     return f"<table><tr><th>topic</th><th>headlines</th></tr>{rows}</table>"
-
-
-def _news_topics_chart(news: pd.DataFrame) -> str:
-    fig, ax = plt.subplots(figsize=(7, 3.2))
-    ax.barh(news["topic"], news["headlines"], color=BLUE)
-    ax.set_title("News topics (latest headlines)")
-    ax.set_xlabel("headlines")
-    ax.invert_yaxis()
-    fig.tight_layout()
-    return _fig_to_b64(fig)
 
 
 def summary_markdown(duckdb_path: Path | None = None) -> str:
@@ -330,6 +240,174 @@ def summary_markdown(duckdb_path: Path | None = None) -> str:
     return "\n".join(lines)
 
 
+def _chart_data(daily, hourly, news, hours_this, hours_prev) -> dict:
+    """Everything the browser-side charts draw, as plain JSON-ready values."""
+    last_date = daily["local_date"].max()
+    start_this = last_date - pd.Timedelta(days=6)
+    start_prev = last_date - pd.Timedelta(days=13)
+
+    def by_offset(frame: pd.DataFrame, start) -> dict[int, float]:
+        offsets = (frame["hour_local"] - start) // pd.Timedelta(hours=1)
+        prices = frame["price_eur_mwh"].round(2)
+        return {int(i): float(p) for i, p in zip(offsets, prices, strict=True)}
+
+    current, previous = by_offset(hours_this, start_this), by_offset(hours_prev, start_prev)
+    week_rows = [
+        {
+            "i": i,
+            "label": f"{start_this + pd.Timedelta(hours=i):%a %d %b %H:00}",
+            "current": current.get(i),
+            "previous": previous.get(i),
+        }
+        for i in range(168)
+    ]
+
+    first_day = hourly["hour_local"].min().normalize()
+    positive = hourly.loc[hourly["price_eur_mwh"] >= 0, "price_eur_mwh"]
+    fingerprint_rows = [
+        [int((t.normalize() - first_day).days), int(t.hour), round(float(p), 1)]
+        for t, p in zip(hourly["hour_local"], hourly["price_eur_mwh"], strict=True)
+    ]
+
+    kind = (hourly["hour_local"].dt.dayofweek >= 5).map({True: "weekend", False: "weekday"})
+    profile = (
+        hourly.assign(kind=kind, hour=hourly["hour_local"].dt.hour)
+        .groupby(["kind", "hour"])["price_eur_mwh"]
+        .mean()
+        .round(2)
+        .reset_index(name="price")
+    )
+
+    months = daily.assign(month=daily["local_date"].dt.to_period("M").astype(str))
+    monthly = (
+        months.groupby("month")
+        .agg(
+            negative_hours=("negative_price_hours", "sum"),
+            avg_price=("avg_price_eur_mwh", "mean"),
+        )
+        .reset_index()
+    )
+    monthly["negative_hours"] = monthly["negative_hours"].astype(int)
+    monthly["avg_price"] = monthly["avg_price"].round(2)
+
+    windy = hourly.dropna(subset=["wind_ms"])
+    per_day = (
+        windy.assign(date=windy["hour_local"].dt.strftime("%Y-%m-%d"))
+        .groupby("date")
+        .agg(price=("price_eur_mwh", "mean"), wind=("wind_ms", "mean"))
+        .round(2)
+        .reset_index()
+    )
+    wind_r = per_day["price"].corr(per_day["wind"]) if len(per_day) > 2 else None
+
+    topics = [] if news is None else news[0].to_dict("records")
+    return {
+        "week": {
+            "rows": week_rows,
+            "ticks": list(range(0, 168, 24)),
+            "day_names": [f"{start_this + pd.Timedelta(days=k):%a}" for k in range(7)],
+        },
+        "fingerprint": {
+            "start": f"{first_day:%Y-%m-%d}",
+            "p98": round(float(positive.quantile(0.98)), 1) if len(positive) else 1.0,
+            "rows": fingerprint_rows,
+        },
+        "profile": profile.to_dict("records"),
+        "monthly": monthly.to_dict("records"),
+        "month_labels": {m: pd.Period(m).strftime("%b %Y") for m in monthly["month"]},
+        "wind": {
+            "rows": per_day.to_dict("records"),
+            "r": None if wind_r is None or pd.isna(wind_r) else round(float(wind_r), 2),
+        },
+        "topics": [{"topic": r["topic"], "headlines": int(r["headlines"])} for r in topics],
+    }
+
+
+def _json_script(payload: dict) -> str:
+    # "</" would end the <script> element early; the JSON is identical once parsed.
+    return json.dumps(payload, separators=(",", ":"), default=str).replace("</", "<\\/")
+
+
+def _legend(*items: tuple[str, str]) -> str:
+    keys = "".join(
+        f"<span class='key'><span class='line' style='background:var({var})'></span>{label}</span>"
+        for var, label in items
+    )
+    return f"<div class='legend'>{keys}</div>"
+
+
+def _cross_source_tiles(hourly: pd.DataFrame) -> str:
+    diff = hourly["price_diff_eur"].dropna()
+    fallback = int((hourly["price_source"] != "entsoe").sum())
+    tiles = [
+        (f"{len(diff):,}", "hours published by both sources"),
+        (f"€{diff.max():.2f}" if len(diff) else "–", "largest difference (test bound €2.00)"),
+        (f"{int((diff > 1).sum()):,}", "hours differing by more than €1"),
+        (f"{fallback:,}", "hours filled from energy-charts (ENTSO-E not yet published)"),
+    ]
+    cards = "".join(
+        f"<div class='card'><div class='num'>{value}</div><div class='lbl'>{label}</div></div>"
+        for value, label in tiles
+    )
+    return f"<div class='cards'>{cards}</div>"
+
+
+PAGE_STYLE = """
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --border: rgba(11, 11, 11, 0.10);
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #898781;
+  --grid: #e1e0d9; --baseline: #c3c2b7;
+  --series-1: #2a78d6; --series-2: #eb6834; --ramp-lo: #fbe7da; --ramp-hi: #9c3a12;
+  --good-text: #006300; --bad-text: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --border: rgba(255, 255, 255, 0.10);
+    --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #898781;
+    --grid: #2c2c2a; --baseline: #383835;
+    --series-1: #3987e5; --series-2: #d95926; --ramp-lo: #2a1d16; --ramp-hi: #ff9d63;
+    --good-text: #0ca30c; --bad-text: #ef6b6b;
+  }
+}
+* { box-sizing: border-box; }
+body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: 1100px;
+       margin: 0 auto; padding: 2rem 16px 3rem; background: var(--page);
+       color: var(--text-primary); line-height: 1.45; }
+h1 { font-size: 1.6rem; margin: 0; }
+h2 { font-size: 1.1rem; margin-top: 2.6rem; padding-bottom: 6px;
+     border-bottom: 1px solid var(--grid); }
+h3 { font-size: 0.98rem; margin: 1.4rem 0 0; }
+.chart h3 { margin: 0; }
+.sub { color: var(--text-secondary); font-size: 0.9rem; margin: 0.35rem 0 0.8rem; }
+a { color: var(--series-1); }
+table { border-collapse: collapse; margin-top: 8px; font-variant-numeric: tabular-nums;
+        display: block; overflow-x: auto; max-width: 100%; }
+td, th { border-bottom: 1px solid var(--grid); padding: 5px 12px; font-size: 0.88rem;
+         text-align: right; white-space: nowrap; }
+th { color: var(--text-secondary); font-weight: 600; }
+th:nth-child(1), td:nth-child(1) { text-align: left; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+         gap: 12px; margin-top: 12px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+        padding: 12px 16px; }
+.num { font-size: 1.4rem; font-weight: 600; }
+.lbl { color: var(--text-secondary); font-size: 0.82rem; margin-top: 2px; }
+.chart { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+         padding: 14px 16px 8px; margin: 14px 0 0; }
+.plot { width: 100%; min-height: 60px; }
+.legend { display: flex; gap: 18px; flex-wrap: wrap; margin: 6px 0 2px;
+          color: var(--text-secondary); font-size: 0.85rem; }
+.key { display: inline-flex; align-items: center; gap: 6px; }
+.line { display: inline-block; width: 18px; height: 2px; border-radius: 1px; }
+.swatch { display: inline-block; width: 14px; height: 12px; border-radius: 2px; }
+.ramp { width: 64px; }
+details { margin-top: 8px; color: var(--text-secondary); font-size: 0.88rem; }
+noscript p { color: var(--text-secondary); }
+"""
+
+
 def generate(out_path: Path | None = None, duckdb_path: Path | None = None) -> Path:
     daily, hourly, health = _load_data(duckdb_path)
     news = _load_news(duckdb_path)
@@ -355,102 +433,129 @@ def generate(out_path: Path | None = None, duckdb_path: Path | None = None) -> P
     )
 
     delta = metrics["delta_pct"]
-    delta_color = GREEN if delta < 0 else RED
     arrow = "▼" if delta < 0 else "▲"
     week_cards = "".join(
         f"<div class='card'><div class='num' style='color:{color}'>{value}</div>"
         f"<div class='lbl'>{label}</div></div>"
         for value, label, color in [
-            (f"{metrics['avg_this']:.2f}", "avg price this week (EUR/MWh)", "#212529"),
-            (f"{arrow} {abs(delta):.1f}%", "vs previous week", delta_color),
-            (str(metrics["neg_hours_this"]), "negative-price hours this week", RED),
+            (f"€{metrics['avg_this']:.2f}", "average price this week (per MWh)", "inherit"),
+            (f"{arrow} {abs(delta):.1f}%", "vs the previous week", GOOD if delta < 0 else BAD),
+            (str(metrics["neg_hours_this"]), "negative-price hours this week", "inherit"),
             (
-                f"{metrics['min_hourly']:.2f}",
+                f"€{metrics['min_hourly']:.2f}",
                 f"cheapest hour ({metrics['min_when']:%a %H:%M})",
-                GREEN,
+                "inherit",
             ),
             (
-                f"{metrics['max_hourly']:.2f}",
+                f"€{metrics['max_hourly']:.2f}",
                 f"priciest hour ({metrics['max_when']:%a %H:%M})",
-                RED,
+                "inherit",
             ),
         ]
     )
 
     if news is not None and news[1]:
         topics, total, filtered = news
-        table = _news_table(topics) if not topics.empty else "<p>No energy topics found.</p>"
-        chart = (
-            f"<img src='data:image/png;base64,{_news_topics_chart(topics)}'>"
-            if not topics.empty
-            else ""
-        )
         news_section = (
             f"<h2>News context (latest {total} headlines)</h2>"
-            f"{table}{chart}"
             "<p class='sub'>Topics from public energy-news feeds, classified by "
             f"classifier.dev. {filtered} of {total} headlines were general news and "
             "filtered out.</p>"
+            + (
+                "<figure class='chart'><div class='plot' id='chart-topics'></div></figure>"
+                f"<details><summary>Table</summary>{_news_table(topics)}</details>"
+                if not topics.empty
+                else "<p>No energy topics found.</p>"
+            )
         )
     else:
         news_section = ""
 
+    payload = _chart_data(daily, hourly, news, hours_this, hours_prev)
+    wind_r = payload["wind"]["r"]
     generated = pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d %H:%M UTC")
     data_range = f"{hourly['hour_local'].min():%d %b %Y} – {hourly['hour_local'].max():%d %b %Y}"
+    ramp_top = payload["fingerprint"]["p98"]
 
     html = f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>NL energy warehouse report</title>
-<style>
-body {{ font-family: -apple-system, Segoe UI, sans-serif; max-width: 1100px; margin: 2rem auto; color: #212529; }}
-h1 {{ font-size: 1.5rem; margin-bottom: 0; }}
-h2 {{ font-size: 1.05rem; margin-top: 2.2rem; border-bottom: 1px solid #dee2e6; padding-bottom: 4px; }}
-.sub {{ color: #6c757d; font-size: 0.9rem; }}
-table {{ border-collapse: collapse; margin-top: 8px; }}
-td, th {{ border: 1px solid #dee2e6; padding: 4px 12px; font-size: 0.9rem; text-align: right; }}
-th:nth-child(1), td:nth-child(1) {{ text-align: left; }}
-tr:nth-child(even) {{ background: #f8f9fa; }}
-img {{ max-width: 100%; }}
-.cards {{ display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }}
-.card {{ border: 1px solid #dee2e6; border-radius: 8px; padding: 10px 16px; min-width: 170px; }}
-.num {{ font-size: 1.35rem; font-weight: 600; }}
-.lbl {{ color: #6c757d; font-size: 0.82rem; margin-top: 2px; }}
-</style></head><body>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NL energy warehouse report</title>
+<style>{PAGE_STYLE}</style></head><body>
 <h1>NL energy warehouse report</h1>
-<p class="sub">generated {generated} · data coverage {data_range} · {len(hourly):,} delivery hours</p>
+<p class="sub">generated {generated} · data coverage {data_range} ·
+{len(hourly):,} delivery hours</p>
+<noscript><p>The charts need JavaScript; the tables carry the same numbers.</p></noscript>
 
 <h2>This week in the market</h2>
 <div class="cards">{week_cards}</div>
+<figure class="chart">
+  <h3>Hourly price, this week against last week (EUR/MWh)</h3>
+  {_legend(("--series-1", "this week"), ("--text-muted", "last week"))}
+  <div class="plot" id="chart-week"></div>
+</figure>
 {_weekly_table(this_week, metrics["avg_prev"])}
-<p class="sub">Weather this week: avg temp {metrics["avg_temp"]:.1f} °C, avg wind {metrics["avg_wind"]:.1f} m/s.
-Comparisons use the previous 7-day window; lower price deltas are green.</p>
-<img src="data:image/png;base64,{_week_chart(hours_this, hours_prev)}">
+<p class="sub">Weather this week: avg temp {metrics["avg_temp"]:.1f} °C, avg wind
+{metrics["avg_wind"]:.1f} m/s. Comparisons use the previous 7-day window; a green ▼ means
+cheaper than last week.</p>
+
+<h2>Price fingerprint</h2>
+<figure class="chart">
+  <h3>Every delivery hour in the window: one column per day, one row per hour</h3>
+  <div class="legend">
+    <span class="key"><span class="swatch ramp"
+      style="background:linear-gradient(90deg, var(--ramp-lo), var(--ramp-hi))"></span>
+      €0 to €{ramp_top:.0f}+ per MWh</span>
+    <span class="key"><span class="swatch" style="background:var(--series-1)"></span>
+      below €0</span>
+  </div>
+  <div class="plot" id="chart-fingerprint"></div>
+  <p class="sub">Blue cells are hours priced below zero. Hover a cell for its date, hour and
+  price.</p>
+</figure>
+
+<h2>When power is cheap</h2>
+<figure class="chart">
+  <h3>Average price by hour of day (EUR/MWh)</h3>
+  {_legend(("--series-1", "weekday"), ("--series-2", "weekend"))}
+  <div class="plot" id="chart-profile"></div>
+</figure>
+<figure class="chart">
+  <h3>Hours priced below zero, per month</h3>
+  <div class="plot" id="chart-negative"></div>
+</figure>
+<h3>Market calendar (last {month_count} months)</h3>
+{month_table}
+
+<h2>Wind and price</h2>
+<figure class="chart">
+  <h3>Daily average price against daily average wind speed</h3>
+  <p class="sub">One dot per day: wind speed in m/s across, price in EUR/MWh up; correlation
+  r = {"–" if wind_r is None else wind_r}. The line is a least-squares fit with its 95% band.</p>
+  <div class="plot" id="chart-wind"></div>
+</figure>
+<h3>Headline stats (whole coverage window)</h3>
+<table><tr><th>metric</th><th>value</th></tr>{stat_rows}</table>
+
+<h2>Cross-source agreement</h2>
+<p class="sub">ENTSO-E is the primary source; energy-charts.info publishes the same auction
+result and fills hours ENTSO-E has not published yet. A dbt test fails the build if the two
+differ by more than €2 in the last 30 days.</p>
+{_cross_source_tiles(hourly)}
+{news_section}
 
 <h2>Pipeline health</h2>
 <table>
 <tr><th>source</th><th>last run</th><th>data through</th><th>rows written (total)</th><th>runs</th></tr>
 {health_rows}
 </table>
-{news_section}
 
-<h2>Headline stats (whole coverage window)</h2>
-<table><tr><th>metric</th><th>value</th></tr>{stat_rows}</table>
-
-<h2>Market calendar (last {month_count} months)</h2>
-{month_table}
-
-<h2>Daily price vs temperature</h2>
-<img src="data:image/png;base64,{_daily_price_vs_temp(daily)}">
-<h2>Hour-of-day price profile</h2>
-<img src="data:image/png;base64,{_hour_of_day_profile(hourly)}">
-<h2>Negative price hours</h2>
-<img src="data:image/png;base64,{_negative_price_hours(daily)}">
-<h2>Cross-source alignment</h2>
-<img src="data:image/png;base64,{_cross_source_diff(hourly)}">
-
-<p class="sub">Part of a three-project portfolio:
+<p class="sub" style="margin-top:2.5rem">Part of a three-project portfolio:
 <a href="https://github.com/kaeldrin-gh/nl-energy-warehouse">nl-energy-warehouse</a> ·
 <a href="https://github.com/kaeldrin-gh/de-energy-streaming">de-energy-streaming</a> ·
 <a href="https://github.com/kaeldrin-gh/databricks-energy-quality">databricks-energy-quality</a>.</p>
+<script type="application/json" id="report-data">{_json_script(payload)}</script>
+<script type="module">{SCRIPT}</script>
 </body></html>"""
 
     out = out_path or (settings.root / "exports" / "report.html")
