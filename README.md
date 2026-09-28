@@ -20,7 +20,6 @@ the marts are tested in CI and served for BI.
 
 Streaming counterpart: [de-energy-streaming](https://github.com/kaeldrin-gh/de-energy-streaming)
 covers the Kafka → Spark → Iceberg stack on German day-ahead prices.
-
 Managed-platform counterpart: [databricks-energy-quality](https://github.com/kaeldrin-gh/databricks-energy-quality)
 covers data-quality monitoring on Databricks (Unity Catalog, Delta, Lakeflow
 pipelines, Declarative Automation Bundles).
@@ -50,8 +49,8 @@ behind the design decisions.
 
 ## The answer in four numbers
 
-Computed from the marts: 58,500+ delivery hours (Jan 2020 to today), ENTSO-E
-primary with an energy-charts cross-check and Open-Meteo weather alongside.
+Computed from the marts: 58,319 delivery hours (January 2020 to August 2026),
+ENTSO-E primary with an energy-charts cross-check and Open-Meteo weather alongside.
 Methodology and caveats: [analysis/findings.md](analysis/findings.md).
 
 | Metric | Value |
@@ -170,7 +169,7 @@ python -m ingest.cli load --backfill --from 2024-01-01      # chunked historical
 python -m ingest.cli news                                   # optional: news headlines with topics
 ```
 
-A daily cron keeps the repositories fed from the live APIs: ENTSO-E primary,
+A daily scheduled run keeps the warehouse fed from the live APIs: ENTSO-E primary,
 energy-charts filling the ~1.5% of hours where publication is incomplete, and
 Open-Meteo weather while the KNMI migration is pending (INC-006).
 `assert_cross_source_alignment` holds the two publishers to a €2/MWh agreement
