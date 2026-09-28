@@ -114,12 +114,10 @@ flowchart LR
   cross-source diff and provenance flags) and `mart_daily_summary`, both
   incremental with a revision-matched reprocessing window. ENTSO-E is
   authoritative; energy-charts fills unpublished hours as a flagged fallback.
-- Date dimension: `dim_date` has one row per calendar date (2020-2035) with
-  ISO week, weekday and `hours_in_day` (23 or 25 on the Europe/Amsterdam DST
-  change days). It joins `mart_daily_summary` on `local_date` and the hourly
-  fact on `cast(hour_local as date)`, so BI tools can use it as their date
-  table. Tests check one 23-hour and one 25-hour day per year, and that no day
-  in the mart holds more hours than the calendar allows.
+- Date dimension: `dim_date` has one row per date (2020-2035) with ISO week,
+  weekday and `hours_in_day` (23 or 25 on DST change days), for BI tools to use
+  as their date table. Tests check one short and one long day per year, and
+  that no mart day holds more hours than the calendar allows.
 - History: `snapshots/price_revisions.sql` snapshots the deduplicated staging
   view into an SCD2 table (`dbt_valid_from`/`dbt_valid_to`), so every upstream
   revision of a delivery hour stays queryable. History starts at the first
@@ -127,21 +125,13 @@ flowchart LR
 
 ## News context (optional)
 
-`python -m ingest.cli news` fetches public Dutch energy-news headlines (Solar
-Magazine, Energiepodium, Duurzaam Nieuws, WindpowerNL) and classifies each one
-through [classifier.dev](https://classifier.dev) - a keyless, free HTTP
-classifier with a calibrated confidence - into `grid and infrastructure / policy
-and regulation / power prices and markets / gas / renewables / batteries and
-storage / hydrogen / companies and projects / weather`. A `none of these` answer
-is stored as a NULL category. Headlines land in `raw.news_headlines`, are staged
-as `stg_news__headlines`, and appear as topic counts on the daily run-page
-summary and in the HTML report, alongside how many headlines were general news
-and filtered out.
-
-The enrichment is optional and fails soft: a broken feed is skipped, a
-classifier outage stores the headline unclassified (the next run fixes it), and
-nothing in the price pipeline depends on it. `NEWS_FEEDS` and `CLASSIFIER_URL`
-override the defaults (see `.env.example`).
+`python -m ingest.cli news` classifies public Dutch energy-news headlines (Solar
+Magazine, Energiepodium, Duurzaam Nieuws, WindpowerNL) into nine energy topics
+through the free [classifier.dev](https://classifier.dev) API. They land in
+`raw.news_headlines` and show up as topic counts in the report and run summary.
+The enrichment fails soft: a broken feed is skipped, a classifier outage leaves
+the headline unclassified until the next run, and the price pipeline never
+depends on it.
 
 ## Quickstart
 
@@ -169,24 +159,16 @@ python -m ingest.cli load --backfill --from 2024-01-01      # chunked historical
 python -m ingest.cli news                                   # optional: news headlines with topics
 ```
 
-A daily scheduled run keeps the warehouse fed from the live APIs: ENTSO-E primary,
-energy-charts filling the ~1.5% of hours where publication is incomplete, and
-Open-Meteo weather while the KNMI migration is pending (INC-006).
-`assert_cross_source_alignment` holds the two publishers to a €2/MWh agreement
-wherever they overlap.
-
-Everything runs locally on DuckDB, and the same dbt project is validated against
-PostgreSQL 17 in CI.
+In the scheduled run, energy-charts fills the ~1.5% of hours ENTSO-E has not
+published yet, and `assert_cross_source_alignment` holds the two publishers to
+€2/MWh wherever they overlap.
 
 ## Semantic layer
 
-`dbt/models/semantics.yml` exposes the marts through the dbt Semantic Layer: one
-hourly semantic model with three metrics (`avg_day_ahead_price`,
-`negative_price_hours`, `total_radiation`). What each metric means, how it is
-computed and who consumes it is written down in
-[docs/metrics.md](docs/metrics.md); the semantic layer is parsed and built on
-every CI run against both targets (DuckDB and PostgreSQL). Local querying
-through the `mf` CLI is pending dbt-metricflow support for current dbt versions.
+`dbt/models/semantics.yml` defines three metrics over the hourly mart
+(`avg_day_ahead_price`, `negative_price_hours`, `total_radiation`), built on
+every CI run against both engines. [docs/metrics.md](docs/metrics.md) says what
+each one means, how it is computed and who consumes it.
 
 ## API (read-only)
 
@@ -213,26 +195,16 @@ endpoints are covered by `tests/test_api.py`.
 
 Three workflows in `.github/workflows/`:
 
-- **ci**: ruff, the full pytest suite (including DST integration tests that run
-  complete dbt builds), a sample-data `dbt build` with source freshness, and
-  `validate-postgres`, which builds the same project against PostgreSQL 17.
-  The two marts and `dim_date` are contract-enforced
-  (`contract: enforced: true`), so a column or type change that would break
-  consumers fails both builds.
-- **docs**: regenerates the dbt documentation site and, on the daily schedule,
-  builds the live market report (price metrics and news topics) from the marts;
-  both deploy to
-  [GitHub Pages](https://kaeldrin-gh.github.io/nl-energy-warehouse/), with the
-  report at
-  [report.html](https://kaeldrin-gh.github.io/nl-energy-warehouse/report.html).
-  The catalog shows lineage, column docs and test coverage.
-- **ingest**: daily cron for incremental load, an optional news load, `dbt build`
-  and Parquet export; refetches and retries once if only the alignment test
-  fails (INC-010) and renders a metrics table on the run page, with
-  `report.html` in the artifact.
-  Skips cleanly when the `ENTSOE_TOKEN` secret is absent, so forks stay green.
-  A failed run opens one GitHub issue (deduplicated while an issue is open), so
-  an outage cannot pass silently.
+- **ci**: ruff, pytest (including DST builds), a sample-data `dbt build` with
+  source freshness, and the same project on PostgreSQL 17. The two marts and
+  `dim_date` are contract-enforced, so a breaking column or type change fails
+  both builds.
+- **docs**: publishes the dbt catalog and, daily, the live market report to
+  [GitHub Pages](https://kaeldrin-gh.github.io/nl-energy-warehouse/).
+- **ingest**: daily load, `dbt build` and Parquet export, with a metrics table
+  on the run page. It refetches and retries once if only the alignment test
+  fails (INC-010), skips cleanly without the `ENTSOE_TOKEN` secret so forks stay
+  green, and opens one GitHub issue when a run fails.
 
 Pre-commit hooks mirror the lint job: `pre-commit install`.
 
