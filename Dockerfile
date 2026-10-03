@@ -5,6 +5,7 @@ WORKDIR /app
 # Install the package (and dbt) first so source edits don't bust the wheel layer.
 COPY pyproject.toml README.md ./
 COPY ingest ./ingest
+COPY api ./api
 RUN pip install --no-cache-dir -e ".[dbt,test]"
 
 # Pinned working set for reproducible builds (see README, "Reproducibility").
