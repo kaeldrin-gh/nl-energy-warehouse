@@ -55,6 +55,24 @@ jobs:
         env:
           DUCKDB_PATH: warehouse/energy.duckdb
 
+  docker:
+    # Proves the image the README documents still builds and runs the same
+    # sample load and dbt build as the build job.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build image
+        run: docker build -t nl-energy-warehouse .
+
+      - name: Load sample data (container)
+        run: docker run --rm -v "$PWD/warehouse:/data" nl-energy-warehouse
+
+      - name: dbt build (container)
+        run: >-
+          docker run --rm --entrypoint dbt -v "$PWD/warehouse:/data" nl-energy-warehouse
+          build --project-dir dbt --profiles-dir dbt
+
   validate-postgres:
     # Second-engine proof: the same dbt project against PostgreSQL. Runs on a
     # service container, so nothing needs to be installed locally. Dialect

@@ -10,7 +10,7 @@ A data warehouse for Dutch electricity prices and weather, built to answer one
 question: what drives the hourly power price in the Netherlands, and when is it
 cheap?
 
-**Stack:** Python · dbt · DuckDB · PostgreSQL · GitHub Actions · Power BI
+**Stack:** Python · dbt · DuckDB · PostgreSQL · Docker · GitHub Actions · Power BI
 
 Day-ahead prices come from the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu/),
 weather from KNMI station data ([Open-Meteo](https://open-meteo.com/) ERA5 covers
@@ -196,9 +196,10 @@ endpoints are covered by `tests/test_api.py`.
 Three workflows in `.github/workflows/`:
 
 - **ci**: ruff, pytest (including DST builds), a sample-data `dbt build` with
-  source freshness, and the same project on PostgreSQL 17. The two marts and
+  source freshness, the same sample load and build inside the Docker image,
+  and the same project on PostgreSQL 17. The two marts and
   `dim_date` are contract-enforced, so a breaking column or type change fails
-  both builds.
+  every build.
 - **docs**: publishes the dbt catalog and, daily, the live market report to
   [GitHub Pages](https://kaeldrin-gh.github.io/nl-energy-warehouse/).
 - **ingest**: daily load, `dbt build` and Parquet export, with a metrics table
@@ -225,7 +226,7 @@ flags rather than failed builds.
 ## Reproducibility and tests
 
 `requirements-lock.txt` pins the dependency set CI runs against. The Docker image
-wraps ingest and dbt:
+wraps ingest and dbt; CI runs these exact commands on every push:
 
 ```bash
 docker build -t nl-energy-warehouse .
