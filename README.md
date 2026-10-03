@@ -6,17 +6,20 @@
 
 **[Live market report](https://kaeldrin-gh.github.io/nl-energy-warehouse/report.html)** — price metrics, charts and news topics, rebuilt daily · **[dbt data catalog](https://kaeldrin-gh.github.io/nl-energy-warehouse/)** — lineage, column docs and test coverage
 
-A data warehouse for Dutch electricity prices and weather, built to answer one
-question: what drives the hourly power price in the Netherlands, and when is it
-cheap?
+This project is a data warehouse for Dutch electricity prices and weather. It
+answers one question: what changes the hourly power price in the Netherlands,
+and when is it low?
 
 **Stack:** Python · dbt · DuckDB · PostgreSQL · Docker · GitHub Actions · Power BI
 
-Day-ahead prices come from the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu/),
-weather from KNMI station data ([Open-Meteo](https://open-meteo.com/) ERA5 covers
-the gap while KNMI migrates), cross-checked against [energy-charts.info](https://energy-charts.info/).
-Ingestion is idempotent with revision-aware upserts, modeling is done in dbt, and
-the marts are tested in CI and served for BI.
+The day-ahead prices come from the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu/).
+The weather comes from KNMI station data. While KNMI moves to a new platform,
+[Open-Meteo](https://open-meteo.com/) ERA5 data fills the gap.
+[energy-charts.info](https://energy-charts.info/) gives a second price source
+for a cross-check.
+
+The ingestion is idempotent and uses revision-aware upserts. dbt makes the
+models. CI tests the marts, and BI tools read them.
 
 Streaming counterpart: [de-energy-streaming](https://github.com/kaeldrin-gh/de-energy-streaming)
 covers the Kafka → Spark → Iceberg stack on German day-ahead prices.
@@ -37,15 +40,16 @@ pipelines, Declarative Automation Bundles).
 
 Public energy data is a good engineering stress test:
 
-- ENTSO-E revises published data retroactively, so the price fetched yesterday
-  may not be the price published today, and append-only ingestion corrupts history.
-- European timezones mean DST: KNMI hourly data is labelled 1-24 in local time,
-  which does not map to UTC hours twice a year.
-- Two independent sources disagree on the same price. How much disagreement is
-  acceptable needs a test, not a hope.
+- ENTSO-E changes data after it publishes it. Thus, the price from yesterday
+  can be different from the price today. Append-only ingestion makes the
+  history incorrect.
+- European time zones use DST. KNMI labels its hourly data 1-24 in local time.
+  Two times each year, these labels do not agree with UTC hours.
+- Two independent sources can give different values for the same price. A test
+  must set the permitted difference.
 
-Each is handled explicitly; [INCIDENTS.md](INCIDENTS.md) holds the postmortems
-behind the design decisions.
+The project handles each problem explicitly. [INCIDENTS.md](INCIDENTS.md)
+contains the postmortems that caused the design decisions.
 
 ## The answer in four numbers
 
@@ -104,34 +108,48 @@ flowchart LR
     D --> SN[("SCD2 snapshot: price_revisions")]
 ```
 
-- Ingestion: watermark plus a fixed lookback window, so revisions inside the
-  window overwrite stale values (`INSERT OR REPLACE` on natural keys). Backfills
-  run in chunks with retry and backoff, and every run is logged to `raw.ingest_log`.
-- Staging: deduplication to the latest revision, weather local-hour to UTC
-  conversion with explicit DST semantics, and a unified weather feed that prefers
-  KNMI observations over the Open-Meteo reanalysis.
-- Marts: `fct_hourly_price_weather` (one row per UTC hour with price, weather,
-  cross-source diff and provenance flags) and `mart_daily_summary`, both
-  incremental with a revision-matched reprocessing window. ENTSO-E is
-  authoritative; energy-charts fills unpublished hours as a flagged fallback.
-- Date dimension: `dim_date` has one row per date (2020-2035) with ISO week,
-  weekday and `hours_in_day` (23 or 25 on DST change days), for BI tools to use
-  as their date table. Tests check one short and one long day per year, and
-  that no mart day holds more hours than the calendar allows.
-- History: `snapshots/price_revisions.sql` snapshots the deduplicated staging
-  view into an SCD2 table (`dbt_valid_from`/`dbt_valid_to`), so every upstream
-  revision of a delivery hour stays queryable. History starts at the first
-  snapshot run; the raw table itself keeps only the newest revision per hour.
+- **Ingestion** uses a watermark and a fixed lookback window. A revision in
+  this window replaces the old value (`INSERT OR REPLACE` on natural keys).
+  Backfills run in chunks, with retry and backoff. Each run writes a row to
+  `raw.ingest_log`.
+- **Staging** keeps only the latest revision of each row. It changes the local
+  weather hours to UTC, with explicit DST rules. It also makes one weather
+  feed. This feed uses the KNMI observations first and the Open-Meteo
+  reanalysis second.
+- **Marts:**
+  - `fct_hourly_price_weather` has one row for each UTC hour. Each row has the
+    price, the weather, the difference between the two price sources and the
+    provenance flags.
+  - `mart_daily_summary` has the daily values.
+
+  Both marts are incremental. They process again the same window as the
+  revision lookback. ENTSO-E is the primary source. If ENTSO-E did not publish
+  an hour, energy-charts fills it, and a flag shows this.
+- **Date dimension:** `dim_date` has one row for each date from 2020 to 2035.
+  It has the ISO week, the weekday and `hours_in_day` (23 or 25 on DST change
+  days). BI tools can use it as their date table. Tests check that each year
+  has one short day and one long day. They also check that no mart day has
+  more hours than the calendar permits.
+- **History:** `snapshots/price_revisions.sql` copies the deduplicated staging
+  view into an SCD2 table (`dbt_valid_from`/`dbt_valid_to`). Thus, you can
+  query each upstream revision of a delivery hour. The history starts at the
+  first snapshot run. The raw table keeps only the newest revision of each
+  hour.
 
 ## News context (optional)
 
-`python -m ingest.cli news` classifies public Dutch energy-news headlines (Solar
-Magazine, Energiepodium, Duurzaam Nieuws, WindpowerNL) into nine energy topics
-through the free [classifier.dev](https://classifier.dev) API. They land in
-`raw.news_headlines` and show up as topic counts in the report and run summary.
-The enrichment fails soft: a broken feed is skipped, a classifier outage leaves
-the headline unclassified until the next run, and the price pipeline never
-depends on it.
+`python -m ingest.cli news` gets public Dutch energy-news headlines from Solar
+Magazine, Energiepodium, Duurzaam Nieuws and WindpowerNL. The free
+[classifier.dev](https://classifier.dev) API gives each headline one of nine
+energy topics. The headlines go into `raw.news_headlines`. The report and the
+run summary show the number of headlines for each topic.
+
+A failure in this step does not stop the price pipeline:
+
+- If a feed is broken, the step skips it.
+- If the classifier is not available, the headline stays without a topic until
+  the next run.
+- The price pipeline does not use the headlines.
 
 ## Quickstart
 
@@ -141,17 +159,20 @@ python -m ingest.cli load --sample          # 90 days of seeded data, no API key
 dbt build --project-dir dbt --profiles-dir dbt
 ```
 
-Refresh everything end to end (incremental load, dbt build, Parquet export,
-report):
+To update all parts from start to end (incremental load, dbt build, Parquet
+export and report), run:
 
 ```bash
 python -m ingest.cli refresh
 python -m ingest.cli bi headline
 ```
 
-For live sources, copy `.env.example` to `.env`, add a free
-[ENTSO-E token](https://transparency.entsoe.eu/usrm/user/create) (KNMI key
-optional), then:
+To use the live sources:
+
+1. Copy `.env.example` to `.env`.
+2. Add a free [ENTSO-E token](https://transparency.entsoe.eu/usrm/user/create).
+   A KNMI key is optional.
+3. Run these commands:
 
 ```bash
 python -m ingest.cli load                                   # incremental + 7-day revision lookback
@@ -159,21 +180,21 @@ python -m ingest.cli load --backfill --from 2024-01-01      # chunked historical
 python -m ingest.cli news                                   # optional: news headlines with topics
 ```
 
-In the scheduled run, energy-charts fills the ~1.5% of hours ENTSO-E has not
-published yet, and `assert_cross_source_alignment` holds the two publishers to
-€2/MWh wherever they overlap.
+In the scheduled run, energy-charts fills the approximately 1.5% of hours that
+ENTSO-E did not publish yet. Where both sources have an hour,
+`assert_cross_source_alignment` makes sure that they agree within €2/MWh.
 
 ## Semantic layer
 
-`dbt/models/semantics.yml` defines three metrics over the hourly mart
-(`avg_day_ahead_price`, `negative_price_hours`, `total_radiation`), built on
-every CI run against both engines. [docs/metrics.md](docs/metrics.md) says what
-each one means, how it is computed and who consumes it.
+`dbt/models/semantics.yml` defines three metrics on the hourly mart:
+`avg_day_ahead_price`, `negative_price_hours` and `total_radiation`. Each CI run
+builds them on both engines. [docs/metrics.md](docs/metrics.md) tells what each
+metric means, how the warehouse calculates it and which tools use it.
 
 ## API (read-only)
 
-`api/main.py` serves the marts over HTTP for tools that should not open DuckDB
-directly:
+`api/main.py` gives the marts over HTTP. Use it for tools that must not open
+DuckDB directly:
 
 ```bash
 pip install -e ".[api]"
@@ -187,27 +208,35 @@ curl "localhost:8000/prices/daily?limit=3"
 | `GET /prices/daily?start=&end=&limit=` | daily aggregates from `mart_daily_summary`, newest first |
 | `GET /prices/hourly?date=YYYY-MM-DD` | every hour of one local date from `fct_hourly_price_weather` |
 
-The service resolves the warehouse like the rest of the repo (`DUCKDB_PATH`,
-default `warehouse/energy.duckdb`), opens it read-only, never writes, and its
-endpoints are covered by `tests/test_api.py`.
+The service finds the warehouse in the same way as the rest of the repository
+(`DUCKDB_PATH`, default `warehouse/energy.duckdb`). It opens the warehouse
+read-only and never writes to it. `tests/test_api.py` tests all endpoints.
 
 ## CI/CD
 
 Three workflows in `.github/workflows/`:
 
-- **ci**: ruff, pytest (including DST builds), a sample-data `dbt build` with
-  source freshness, the same sample load and build inside the Docker image,
-  and the same project on PostgreSQL 17. The two marts and
-  `dim_date` are contract-enforced, so a breaking column or type change fails
-  every build.
-- **docs**: publishes the dbt catalog and, daily, the live market report to
-  [GitHub Pages](https://kaeldrin-gh.github.io/nl-energy-warehouse/).
-- **ingest**: daily load, `dbt build` and Parquet export, with a metrics table
-  on the run page. It refetches and retries once if only the alignment test
-  fails (INC-010), skips cleanly without the `ENTSOE_TOKEN` secret so forks stay
-  green, and opens one GitHub issue when a run fails.
+- **ci** runs these checks:
+  - ruff and pytest, with the DST builds
+  - a `dbt build` on sample data, with source freshness
+  - the same sample load and build in the Docker image
+  - the same project on PostgreSQL 17
 
-Pre-commit hooks mirror the lint job: `pre-commit install`.
+  The two marts and `dim_date` have enforced contracts. Thus, a column or type
+  change that breaks a consumer makes each build fail.
+- **docs** publishes the dbt catalog to
+  [GitHub Pages](https://kaeldrin-gh.github.io/nl-energy-warehouse/). Each day,
+  it also publishes the live market report there.
+- **ingest** runs the daily load, `dbt build` and the Parquet export. It shows
+  a metrics table on the run page.
+  - If only the alignment test fails, it gets the data again and tries one
+    more time (INC-010).
+  - If the `ENTSOE_TOKEN` secret is not set, it stops without an error. Thus,
+    forks stay green.
+  - If a run fails, it opens a GitHub issue.
+
+The pre-commit hooks do the same checks as the lint job. To install them, run
+`pre-commit install`.
 
 ## When something breaks
 
@@ -215,18 +244,20 @@ Pre-commit hooks mirror the lint job: `pre-commit install`.
 | --- | --- | --- |
 | CI red | Actions log, failing step | Testing section below |
 | Scheduled ingest failed | `ingest` workflow log | INC-007 (rate limits), INC-006 (retired endpoint), INC-009 (upstream 503) |
-| Cross-source alignment fails | `dbt/tests/assert_cross_source_alignment.sql` output | Refetched and retried once automatically (INC-010); still red = INC-001, INC-003, INC-007 |
+| Cross-source alignment fails | `dbt/tests/assert_cross_source_alignment.sql` output | The workflow gets the data again and tries one more time (INC-010). If it still fails, refer to INC-001, INC-003 and INC-007 |
 | One hour looks wrong | `raw.ingest_log`, pipeline health in `exports/report.html` | INC-004, INC-007 |
 | Source freshness fails | `dbt source freshness` output | INC-006 (KNMI offline) |
 
-Guardrails reject what is provably broken (uniqueness, exchange limits,
-alignment); anomalies within legal bounds surface in the report and provenance
-flags rather than failed builds.
+The guardrails stop data that is definitely incorrect: duplicate keys, prices
+outside the exchange limits, and sources that do not agree. Unusual values
+inside the legal limits do not stop the build. The report and the provenance
+flags show them.
 
 ## Reproducibility and tests
 
-`requirements-lock.txt` pins the dependency set CI runs against. The Docker image
-wraps ingest and dbt; CI runs these exact commands on every push:
+`requirements-lock.txt` sets the exact dependency versions that CI uses. The
+Docker image contains the ingest code and dbt. For each push, CI runs these
+commands:
 
 ```bash
 docker build -t nl-energy-warehouse .
@@ -240,14 +271,18 @@ pip install -e ".[dbt,test]"
 python -m pytest tests -v
 ```
 
-- Parser tests against committed ENTSO-E XML and KNMI fixtures (hourly and
-  15-minute resolutions, negative prices, missing values, hour-24 labels)
-- Ingestion tests: upsert idempotency and revision overwrite
-- Determinism tests: the sample generator is byte-identical for a given seed
-- DST integration tests: full dbt builds over synthetic spring and autumn
-  transition days, asserting no duplicate hours
-- API tests: the read-only FastAPI endpoints (health, ordering, date filters,
-  validation) are exercised against the built sample warehouse
+- **Parser tests** use committed ENTSO-E XML and KNMI fixtures. They include
+  hourly and 15-minute resolutions, negative prices, missing values and
+  hour-24 labels.
+- **Ingestion tests** check that upserts are idempotent and that a revision
+  replaces the old value.
+- **Determinism tests** check that the sample generator gives the same bytes
+  for the same seed.
+- **DST integration tests** run full dbt builds on synthetic spring and autumn
+  change days. They make sure that no hour occurs two times.
+- **API tests** call the read-only FastAPI endpoints on the sample warehouse.
+  They test the health check, the order of rows, the date filters and the
+  validation.
 
 ## License
 
