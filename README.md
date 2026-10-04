@@ -33,7 +33,7 @@ pipelines, Declarative Automation Bundles).
 | --- | --- |
 | 2 minutes | The four numbers below and the [live market report](https://kaeldrin-gh.github.io/nl-energy-warehouse/report.html) |
 | 10 minutes | [int_price_weather_hourly.sql](dbt/models/intermediate/int_price_weather_hourly.sql) (source priority and provenance), the DST handling in [stg_knmi__hourly_weather.sql](dbt/models/staging/stg_knmi__hourly_weather.sql), and [tests/test_dst_staging.py](tests/test_dst_staging.py), which builds the project over both DST nights |
-| A design discussion | [INCIDENTS.md](INCIDENTS.md): 10 postmortems, each ending in the design change it produced |
+| A design discussion | [INCIDENTS.md](INCIDENTS.md): 11 postmortems, each ending in the design change it produced |
 | The dbt side | The [data catalog](https://kaeldrin-gh.github.io/nl-energy-warehouse/) (lineage, column docs, tests) and the contracts in [_marts__models.yml](dbt/models/marts/_marts__models.yml) |
 
 ## Why this repo exists
@@ -247,6 +247,7 @@ The pre-commit hooks do the same checks as the lint job. To install them, run
 | Cross-source alignment fails | `dbt/tests/assert_cross_source_alignment.sql` output | The workflow gets the data again and tries one more time (INC-010). If it still fails, refer to INC-001, INC-003 and INC-007 |
 | One hour looks wrong | `raw.ingest_log`, pipeline health in `exports/report.html` | INC-004, INC-007 |
 | Source freshness fails | `dbt source freshness` output | INC-006 (KNMI offline) |
+| The report shows "Missing data" | The warning on the report and on the run summary | energy-charts was not available, so the hours that ENTSO-E did not publish yet stay empty. The marts use the hours that are available. The next successful load fills the gaps (INC-011) |
 
 The guardrails stop data that is definitely incorrect: duplicate keys, prices
 outside the exchange limits, and sources that do not agree. Unusual values

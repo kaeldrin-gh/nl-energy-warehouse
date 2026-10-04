@@ -256,14 +256,34 @@ def refresh() -> None:
     print(f"report written to {report.generate()}")
 
 
-def _run_dbt_build() -> subprocess.CompletedProcess:
+def continuity_vars() -> list[str]:
+    """dbt --vars that relax the hour-continuity test during a fallback outage.
+
+    Gaps are an error when both price sources loaded. When energy-charts did
+    not load after the latest ENTSO-E load, the gaps are the hours it would
+    have filled: the build continues with the data that is available, and the
+    report and run summary show the gaps and their cause.
+    """
+    conn = db.connect()
+    degraded = db.fallback_degraded(conn)
+    conn.close()
+    if not degraded:
+        return []
+    print(
+        "energy-charts did not load after the latest ENTSO-E load: "
+        "hour gaps are a warning in this build, not an error"
+    )
+    return ["--vars", '{"continuity_severity": "warn"}']
+
+
+def _run_dbt_build(extra_args: list[str] | None = None) -> subprocess.CompletedProcess:
     dbt = shutil.which("dbt")
     if dbt is None:
         raise SystemExit("dbt executable not found on PATH")
     env = os.environ.copy()
     env["DUCKDB_PATH"] = str(settings.duckdb_path)
     return subprocess.run(
-        ["dbt", "build", "--project-dir", "dbt", "--profiles-dir", "dbt"],
+        ["dbt", "build", "--project-dir", "dbt", "--profiles-dir", "dbt", *(extra_args or [])],
         cwd=settings.root,
         env=env,
         capture_output=True,
@@ -307,7 +327,8 @@ def build_with_alignment_retry(window_days: int = ALIGNMENT_RETRY_WINDOW_DAYS) -
     shorter than the test window and would not refetch the old hour. A second
     failure, or any other failure, is real and fails the run.
     """
-    result = _run_dbt_build()
+    dbt_vars = continuity_vars()
+    result = _run_dbt_build(dbt_vars)
     if result.returncode == 0:
         _print_dbt_summary(result)
         return
@@ -326,7 +347,7 @@ def build_with_alignment_retry(window_days: int = ALIGNMENT_RETRY_WINDOW_DAYS) -
     if failures:
         print(f"refetch degraded: {', '.join(failures)} unavailable - retrying the build anyway")
 
-    result = _run_dbt_build()
+    result = _run_dbt_build(continuity_vars())
     if result.returncode != 0:
         print(result.stdout[-2000:])
         raise SystemExit(f"dbt build still failed after refetch (exit {result.returncode})")

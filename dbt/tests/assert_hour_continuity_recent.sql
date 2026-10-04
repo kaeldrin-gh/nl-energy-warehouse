@@ -1,3 +1,9 @@
+-- Severity is `error` unless the build sets continuity_severity=warn. The
+-- ingest CLI does that only when energy-charts (the fallback that fills hours
+-- ENTSO-E has not published) did not load after the latest ENTSO-E load; the
+-- report then shows the gaps with their cause instead of the build stopping.
+{{ config(severity=var('continuity_severity', 'error')) }}
+
 -- Hour-continuity guard for the recent window (last 14 days).
 -- Gap math uses epoch extraction instead of DuckDB's datediff() so the test
 -- runs on both engines; > 2 gaps fails the build (small gaps near DST or

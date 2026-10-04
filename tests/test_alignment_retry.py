@@ -53,7 +53,8 @@ def test_retry_refetches_the_compared_window_and_succeeds(monkeypatch):
     builds = [completed(1), completed(0, "Done. PASS=32")]
     calls = []
 
-    monkeypatch.setattr(cli, "_run_dbt_build", lambda: builds.pop(0))
+    monkeypatch.setattr(cli, "_run_dbt_build", lambda *_: builds.pop(0))
+    monkeypatch.setattr(cli, "continuity_vars", lambda: [])
     monkeypatch.setattr(
         cli,
         "failed_node_ids",
@@ -79,7 +80,8 @@ def test_retry_refetches_the_compared_window_and_succeeds(monkeypatch):
 
 
 def test_model_error_is_fatal_without_refetch(monkeypatch):
-    monkeypatch.setattr(cli, "_run_dbt_build", lambda: completed(1))
+    monkeypatch.setattr(cli, "_run_dbt_build", lambda *_: completed(1))
+    monkeypatch.setattr(cli, "continuity_vars", lambda: [])
     monkeypatch.setattr(
         cli, "failed_node_ids", lambda path=None: ["model.nl_energy.mart_daily_summary"]
     )
@@ -92,7 +94,8 @@ def test_model_error_is_fatal_without_refetch(monkeypatch):
 def test_second_alignment_failure_is_fatal(monkeypatch):
     builds = [completed(1), completed(1)]
     calls = []
-    monkeypatch.setattr(cli, "_run_dbt_build", lambda: builds.pop(0))
+    monkeypatch.setattr(cli, "_run_dbt_build", lambda *_: builds.pop(0))
+    monkeypatch.setattr(cli, "continuity_vars", lambda: [])
     monkeypatch.setattr(
         cli,
         "failed_node_ids",

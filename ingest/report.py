@@ -33,6 +33,68 @@ def missing_marts(duckdb_path: Path | None = None) -> list[str]:
     return [mart for mart in REPORT_MARTS if mart not in built]
 
 
+GAP_WINDOW_DAYS = 14  # same window as dbt/tests/assert_hour_continuity_recent.sql
+
+
+def hour_gaps(hourly: pd.DataFrame, days: int = GAP_WINDOW_DAYS) -> pd.DataFrame:
+    """Runs of missing delivery hours in the last `days` days of the hourly mart.
+
+    One row per run: the first and the last missing hour (UTC) and the count.
+    """
+    hours = pd.to_datetime(hourly["hour_utc"]).sort_values()
+    recent = hours[hours >= hours.max() - pd.Timedelta(days=days)].reset_index(drop=True)
+    step = recent.diff()
+    breaks = step[step > pd.Timedelta(hours=1)]
+    return pd.DataFrame(
+        {
+            "first_missing": recent[breaks.index - 1].values + pd.Timedelta(hours=1),
+            "last_missing": recent[breaks.index].values - pd.Timedelta(hours=1),
+            "missing_hours": (breaks // pd.Timedelta(hours=1) - 1).astype(int).values,
+        }
+    )
+
+
+def _gap_cause(degraded: bool) -> str:
+    if degraded:
+        return (
+            "energy-charts.info, the fallback source, was not available in the latest "
+            "load. Thus, it could not fill the hours that ENTSO-E has not published."
+        )
+    return "ENTSO-E has not published these hours yet."
+
+
+def _gap_ranges(gaps: pd.DataFrame, limit: int = 5) -> list[str]:
+    ranges = [
+        f"{g.first_missing:%d %b %H:%M}–{g.last_missing:%H:%M} UTC ({g.missing_hours} h)"
+        if g.first_missing.date() == g.last_missing.date()
+        else f"{g.first_missing:%d %b %H:%M} – {g.last_missing:%d %b %H:%M} UTC ({g.missing_hours} h)"
+        for g in gaps.head(limit).itertuples()
+    ]
+    if len(gaps) > limit:
+        ranges.append(f"and {len(gaps) - limit} more")
+    return ranges
+
+
+def _fallback_degraded(duckdb_path: Path | None) -> bool:
+    conn = db.connect(duckdb_path)
+    degraded = db.fallback_degraded(conn)
+    conn.close()
+    return degraded
+
+
+def _gap_warning_html(gaps: pd.DataFrame, degraded: bool) -> str:
+    if gaps.empty:
+        return ""
+    items = "".join(f"<li>{r}</li>" for r in _gap_ranges(gaps))
+    return (
+        '<div class="data-warning" role="note">'
+        f"<p><strong>Missing data.</strong> {int(gaps['missing_hours'].sum())} delivery hours "
+        f"in the last {GAP_WINDOW_DAYS} days are missing:</p><ul>{items}</ul>"
+        f"<p>{_gap_cause(degraded)} The figures on this page use only the hours that are "
+        "available. The next successful load fills the missing hours.</p></div>"
+    )
+
+
 def _load_data(duckdb_path: Path | None):
     conn = db.connect(duckdb_path)
     daily = conn.execute("select * from main.mart_daily_summary order by local_date").fetchdf()
@@ -211,6 +273,7 @@ def summary_markdown(duckdb_path: Path | None = None) -> str:
         """
     ).fetchdf()
     news = _news_stats(conn)
+    degraded = db.fallback_degraded(conn)
     conn.close()
 
     latest = hourly["hour_utc"].max()
@@ -225,6 +288,16 @@ def summary_markdown(duckdb_path: Path | None = None) -> str:
         f"**{len(hourly)}** delivery hours · price sources: entsoe "
         f"{len(hourly) - fallback} / energycharts {fallback}",
         "",
+    ]
+    gaps = hour_gaps(hourly)
+    if not gaps.empty:
+        lines += [
+            f"> **Warning: missing data.** {int(gaps['missing_hours'].sum())} delivery hours "
+            f"in the last {GAP_WINDOW_DAYS} days are missing: "
+            f"{'; '.join(_gap_ranges(gaps))}. {_gap_cause(degraded)}",
+            "",
+        ]
+    lines += [
         "| Window | Avg EUR/MWh | Min | Max | Negative hours |",
         "| --- | ---: | ---: | ---: | ---: |",
     ]
@@ -410,6 +483,9 @@ h1 { font-size: 1.6rem; margin: 0; }
 h2 { font-size: 1.1rem; margin-top: 2.6rem; padding-bottom: 6px;
      border-bottom: 1px solid var(--grid); }
 h3 { font-size: 0.98rem; margin: 1.4rem 0 0; }
+.data-warning { margin: 1.2rem 0; padding: 0.7rem 1rem; background: var(--surface);
+                border: 1px solid var(--border); border-left: 4px solid var(--bad-text); }
+.data-warning p, .data-warning ul { margin: 0.3rem 0; }
 .chart h3 { margin: 0; }
 .sub { color: var(--text-secondary); font-size: 0.9rem; margin: 0.35rem 0 0.8rem; }
 a { color: var(--series-1); }
@@ -516,6 +592,7 @@ def generate(out_path: Path | None = None, duckdb_path: Path | None = None) -> P
 <h1>NL energy warehouse report</h1>
 <p class="sub">generated {generated} · data coverage {data_range} ·
 {len(hourly):,} delivery hours</p>
+{_gap_warning_html(hour_gaps(hourly), _fallback_degraded(duckdb_path))}
 <noscript><p>The charts need JavaScript; the tables carry the same numbers.</p></noscript>
 
 <h2>This week in the market</h2>

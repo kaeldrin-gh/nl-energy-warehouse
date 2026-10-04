@@ -89,6 +89,24 @@ def log_run(conn: duckdb.DuckDBPyConnection, source: str, window_start, window_e
     )
 
 
+def fallback_degraded(conn: duckdb.DuckDBPyConnection) -> bool:
+    """True when energy-charts did not load after the latest ENTSO-E load.
+
+    A load runs ENTSO-E first and energy-charts second, and each successful
+    source writes an ingest_log row. If the energy-charts row is missing or
+    older, the fallback failed in the latest run, so the hours that ENTSO-E has
+    not published stay empty.
+    """
+    entsoe, energycharts = conn.execute(
+        """
+        SELECT max(run_at) FILTER (WHERE source = 'entsoe'),
+               max(run_at) FILTER (WHERE source = 'energycharts')
+        FROM raw.ingest_log
+        """
+    ).fetchone()
+    return entsoe is not None and (energycharts is None or energycharts < entsoe)
+
+
 def watermark(conn: duckdb.DuckDBPyConnection, source: str):
     row = conn.execute(
         "SELECT max(window_end) FROM raw.ingest_log WHERE source = ? AND window_end IS NOT NULL",
