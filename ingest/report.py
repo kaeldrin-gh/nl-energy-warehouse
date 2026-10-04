@@ -13,6 +13,26 @@ GOOD = "var(--good-text)"
 BAD = "var(--bad-text)"
 
 
+REPORT_MARTS = ("mart_daily_summary", "fct_hourly_price_weather")
+
+
+def missing_marts(duckdb_path: Path | None = None) -> list[str]:
+    """Marts the report reads that the last dbt build did not create.
+
+    A failed build (for example a continuity test after a source outage) skips
+    the marts downstream of the failure; the report then has nothing to read.
+    """
+    conn = db.connect(duckdb_path)
+    built = {
+        row[0]
+        for row in conn.execute(
+            "select table_name from information_schema.tables where table_schema = 'main'"
+        ).fetchall()
+    }
+    conn.close()
+    return [mart for mart in REPORT_MARTS if mart not in built]
+
+
 def _load_data(duckdb_path: Path | None):
     conn = db.connect(duckdb_path)
     daily = conn.execute("select * from main.mart_daily_summary order by local_date").fetchdf()
