@@ -21,7 +21,7 @@ from tests.conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT))
 
-from ingest import db, report, sample  # noqa: E402
+from ingest import cli, db, report, sample  # noqa: E402
 
 
 def test_hour_gaps_lists_each_run_of_missing_hours():
@@ -135,3 +135,19 @@ def test_report_without_gaps_has_no_warning(built_sample_warehouse, tmp_path):
     ).read_text(encoding="utf-8")
     assert 'class="data-warning"' not in html
     assert "Warning: missing data." not in report.summary_markdown(built_sample_warehouse)
+
+
+def test_optional_energycharts_failure_does_not_fail_the_load(capsys):
+    assert cli.blocking_failures(["energycharts"], ["energycharts"]) == []
+    assert "::warning::energycharts failed" in capsys.readouterr().out
+
+
+def test_a_failed_primary_source_still_fails_the_load():
+    # The published report must never be built without ENTSO-E.
+    assert cli.blocking_failures(["entsoe"], ["energycharts"]) == ["entsoe"]
+    assert cli.blocking_failures(["entsoe", "energycharts"], ["energycharts"]) == ["entsoe"]
+
+
+def test_without_optional_sources_every_failure_fails_the_load():
+    # The ingest workflow passes no --optional-sources: its run stays red.
+    assert cli.blocking_failures(["energycharts"], []) == ["energycharts"]

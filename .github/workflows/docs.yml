@@ -49,6 +49,11 @@ jobs:
       # for the report's monthly table). The backfill is best-effort: if a
       # source fails partway, the incremental load still runs and the report
       # header states the coverage that actually loaded.
+      #
+      # energy-charts is optional in the incremental load: if only the fallback
+      # fails, the build continues and the report shows the missing hours with
+      # their cause (INC-011). Any other failed source fails this step, nothing
+      # deploys, and Pages keeps the last good report.
       - name: Load data (live on schedule/manual, sample otherwise)
         id: load
         run: |
@@ -57,7 +62,7 @@ jobs:
               python -m ingest.cli load --backfill --from "$(date -u -d '13 months ago' +%Y-%m-01)" \
                 --sources entsoe,energycharts,openmeteo \
                 || echo "::warning::13-month backfill incomplete; the report covers what loaded"
-              python -m ingest.cli load
+              python -m ingest.cli load --optional-sources energycharts
               echo "live=1" >> "$GITHUB_OUTPUT"
               exit 0
             fi

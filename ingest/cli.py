@@ -187,6 +187,24 @@ def load_live(
     return failures
 
 
+def blocking_failures(failures: list[str], optional: list[str]) -> list[str]:
+    """The failed sources that must fail the load step.
+
+    A source in `optional` only gets a warning. The docs workflow makes
+    energy-charts optional: without the fallback, the build continues and the
+    report shows the missing hours (INC-011). A failed ENTSO-E still fails
+    the step, so the published report is never built without the primary
+    source.
+    """
+    for source in failures:
+        if source in optional:
+            print(
+                f"::warning::{source} failed and is optional in this run - "
+                "the build continues with the other sources"
+            )
+    return [source for source in failures if source not in optional]
+
+
 def export_marts(out_dir: Path | None = None, duckdb_path: Path | None = None) -> None:
     conn = db.connect(duckdb_path)
     out = out_dir or (settings.root / "exports")
@@ -379,6 +397,11 @@ def main() -> None:
     load.add_argument(
         "--to", dest="date_to", default=None, help="backfill end date, YYYY-MM-DD (default: now)"
     )
+    load.add_argument(
+        "--optional-sources",
+        default="",
+        help="comma-separated sources whose failure gives a warning, not a failed step",
+    )
 
     sub.add_parser("export", help="export mart tables to exports/ as Parquet for BI tools")
     sub.add_parser("report", help="generate exports/report.html from the marts")
@@ -423,7 +446,8 @@ def main() -> None:
         failures = load_live(
             [s.strip() for s in args.sources.split(",") if s.strip()], backfill_start, backfill_end
         )
-        if failures:
+        optional = [s.strip() for s in args.optional_sources.split(",") if s.strip()]
+        if blocking_failures(failures, optional):
             # Non-zero exit so automation (cron, CI) treats the run as failed,
             # even though the healthy sources were still loaded.
             sys.exit(1)
