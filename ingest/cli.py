@@ -409,7 +409,13 @@ def main() -> None:
     elif args.command == "export":
         export_marts()
     elif args.command == "report":
-        print(f"report written to {report.generate()}")
+        missing = report.missing_marts()
+        if missing:
+            # Same reason as export: do not mask a failed dbt build with a
+            # CatalogException. The build step already failed the run.
+            print(f"report skipped: {', '.join(missing)} not built (see the dbt build step)")
+        else:
+            print(f"report written to {report.generate()}")
     elif args.command == "bi":
         run_bi_query(args.name)
     elif args.command == "refresh":

@@ -148,3 +148,16 @@ def test_money_and_missing_weather_are_formatted_for_readers():
     assert report._eur(163.931) == "€163.93"
     assert report._one_decimal(float("nan")) == "–"
     assert report._one_decimal(15.24) == "15.2"
+
+
+def test_missing_marts_is_empty_after_a_full_build(built_sample_warehouse):
+    assert report.missing_marts(built_sample_warehouse) == []
+
+
+def test_missing_marts_names_the_marts_a_failed_build_skipped(tmp_path):
+    # A warehouse with only the raw schema: what a run sees when dbt skipped
+    # the marts after a failed test.
+    assert report.missing_marts(tmp_path / "raw_only.duckdb") == [
+        "mart_daily_summary",
+        "fct_hourly_price_weather",
+    ]
