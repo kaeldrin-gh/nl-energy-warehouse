@@ -20,6 +20,7 @@ On 2026-10-04, energy-charts.info returned HTTP 503 for the full retry ladder in
 - The report and the run summary show a "Missing data" warning: how many hours are missing, which ones, and why. A reader never gets incomplete figures without the reason.
 - The report step checks for its marts first and prints `report skipped: ... not built` instead of a traceback, so the cause stays the last error in the log.
 - The load step still exits non-zero, so the run stays red and the issue still opens: a degraded run is shipped, but it is not silent.
+- The docs workflow, which publishes the live report to Pages, loads with `--optional-sources energycharts`. A fallback outage publishes a fresh report with the warning. A failed ENTSO-E still fails the step, so Pages keeps the last good report and never shows prices built without the primary source.
 
 ---
 

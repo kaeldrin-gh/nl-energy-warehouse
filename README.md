@@ -227,6 +227,10 @@ Three workflows in `.github/workflows/`:
 - **docs** publishes the dbt catalog to
   [GitHub Pages](https://kaeldrin-gh.github.io/nl-energy-warehouse/). Each day,
   it also publishes the live market report there.
+  - If only energy-charts fails, the report is published with a "Missing
+    data" warning (INC-011).
+  - If ENTSO-E fails or the build fails, nothing is deployed. Pages keeps the
+    last good report.
 - **ingest** runs the daily load, `dbt build` and the Parquet export. It shows
   a metrics table on the run page.
   - If only the alignment test fails, it gets the data again and tries one
