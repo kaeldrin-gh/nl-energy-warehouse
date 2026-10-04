@@ -4,6 +4,25 @@ Postmortems of the data problems this warehouse is designed against. Each incide
 
 ---
 
+## INC-011: The fallback went down, and the whole report went with it
+
+**Category**: upstream outage / degraded mode (INC-009 follow-up)
+
+On 2026-10-04, energy-charts.info returned HTTP 503 for the full retry ladder in the scheduled run (17:50 UTC) and in a manual re-run (18:03 UTC). INC-009's per-source isolation worked: ENTSO-E (718 rows) and Open-Meteo still loaded. But ENTSO-E had not yet published every hour of the window, and filling those hours is exactly energy-charts' job. With the fallback down, `fct_hourly_price_weather` had 4 gaps in the last 14 days, `assert_hour_continuity_recent` (more than 2 gaps fails) stopped the build, dbt skipped `mart_daily_summary`, and the report step crashed on the missing table. A fallback outage had stopped the report, although the primary source was healthy.
+
+**Detection**: the red run and its issue. The real cause (`energycharts: FAILED (HTTP 503 ...)`) was in the log, but the last error, a `CatalogException` from the report step, pointed at the wrong place.
+
+**Root cause (confirmed)**: the continuity test could not tell two situations apart. Gaps while both sources loaded mean something is broken. Gaps while the fallback did not load are the hours that the fallback would have filled: incomplete, but explained.
+
+**Design response**:
+- `db.fallback_degraded` reads `raw.ingest_log`: if energy-charts did not load after the latest ENTSO-E load, the fallback failed in that run.
+- In that case only, `python -m ingest.cli build` runs the continuity test as a warning (`continuity_severity: warn`). The marts build from the hours that are available. When both sources loaded, gaps still fail the build.
+- The report and the run summary show a "Missing data" warning: how many hours are missing, which ones, and why. A reader never gets incomplete figures without the reason.
+- The report step checks for its marts first and prints `report skipped: ... not built` instead of a traceback, so the cause stays the last error in the log.
+- The load step still exits non-zero, so the run stays red and the issue still opens: a degraded run is shipped, but it is not silent.
+
+---
+
 ## INC-010: The cross-check source that published partial hours
 
 **Category**: partial data / derived-value bias (INC-007 recurrence)
