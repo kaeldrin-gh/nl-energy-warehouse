@@ -151,3 +151,40 @@ def test_a_failed_primary_source_still_fails_the_load():
 def test_without_optional_sources_every_failure_fails_the_load():
     # The ingest workflow passes no --optional-sources: its run stays red.
     assert cli.blocking_failures(["energycharts"], []) == ["energycharts"]
+
+
+def test_fallback_share_counts_recent_energycharts_hours():
+    hours = pd.date_range("2026-10-01", periods=72, freq="h")
+    sources = ["entsoe"] * 48 + ["energycharts"] * 24
+    share = report.fallback_share(pd.DataFrame({"hour_utc": hours, "price_source": sources}))
+    assert share == (24, 72)
+
+
+def test_primary_outage_report_says_prices_are_from_the_fallback(tmp_path):
+    # 10 Oct 2026: ENTSO-E returned 403, energy-charts priced every hour.
+    path = tmp_path / "primary_out.duckdb"
+    frames = sample.generate(sample_days=30)
+    last = frames["entsoe_prices"]["hour_utc"].max()
+    conn = db.connect(path)
+    for table, frame in frames.items():
+        if table == "entsoe_prices":
+            frame = frame[frame["hour_utc"] <= last - pd.Timedelta(days=3)]
+        db.upsert(conn, table, frame)
+    conn.close()
+
+    result = _build(path)
+
+    assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-2000:]
+    html = report.generate(out_path=tmp_path / "report.html", duckdb_path=path).read_text(
+        encoding="utf-8"
+    )
+    assert "Prices from the fallback source." in html
+    assert "because ENTSO-E (the primary source) did not provide them" in html
+    assert "Warning: prices from the fallback source." in report.summary_markdown(path)
+
+
+def test_normal_fallback_share_shows_no_fallback_warning(built_sample_warehouse, tmp_path):
+    html = report.generate(
+        out_path=tmp_path / "report.html", duckdb_path=built_sample_warehouse
+    ).read_text(encoding="utf-8")
+    assert "Prices from the fallback source." not in html

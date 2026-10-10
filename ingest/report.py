@@ -75,6 +75,37 @@ def _gap_ranges(gaps: pd.DataFrame, limit: int = 5) -> list[str]:
     return ranges
 
 
+# Normally energy-charts fills about 1.5% of the hours. Above this share,
+# ENTSO-E (the primary source) did not provide the prices: the reader must know.
+FALLBACK_WARN_SHARE = 0.05
+
+
+def fallback_share(hourly: pd.DataFrame, days: int = GAP_WINDOW_DAYS) -> tuple[int, int]:
+    """(hours priced from energy-charts, all hours) in the last `days` days."""
+    hours = pd.to_datetime(hourly["hour_utc"])
+    recent = hourly[hours >= hours.max() - pd.Timedelta(days=days)]
+    return int((recent["price_source"] != "entsoe").sum()), len(recent)
+
+
+def _fallback_text(fallback: int, total: int) -> str:
+    return (
+        f"{fallback} of {total} delivery hours in the last {GAP_WINDOW_DAYS} days use prices "
+        "from energy-charts.info, the fallback source, because ENTSO-E (the primary source) "
+        "did not provide them. These prices are not cross-checked against a second source."
+    )
+
+
+def _fallback_warning_html(hourly: pd.DataFrame) -> str:
+    fallback, total = fallback_share(hourly)
+    if not total or fallback / total <= FALLBACK_WARN_SHARE:
+        return ""
+    return (
+        '<div class="data-warning" role="note">'
+        f"<p><strong>Prices from the fallback source.</strong> {_fallback_text(fallback, total)} "
+        "The next successful ENTSO-E load replaces them.</p></div>"
+    )
+
+
 def _fallback_degraded(duckdb_path: Path | None) -> bool:
     conn = db.connect(duckdb_path)
     degraded = db.fallback_degraded(conn)
@@ -295,6 +326,13 @@ def summary_markdown(duckdb_path: Path | None = None) -> str:
             f"> **Warning: missing data.** {int(gaps['missing_hours'].sum())} delivery hours "
             f"in the last {GAP_WINDOW_DAYS} days are missing: "
             f"{'; '.join(_gap_ranges(gaps))}. {_gap_cause(degraded)}",
+            "",
+        ]
+    fallback_hours, recent_hours = fallback_share(hourly)
+    if recent_hours and fallback_hours / recent_hours > FALLBACK_WARN_SHARE:
+        lines += [
+            "> **Warning: prices from the fallback source.** "
+            f"{_fallback_text(fallback_hours, recent_hours)}",
             "",
         ]
     lines += [
@@ -593,6 +631,7 @@ def generate(out_path: Path | None = None, duckdb_path: Path | None = None) -> P
 <p class="sub">generated {generated} · data coverage {data_range} ·
 {len(hourly):,} delivery hours</p>
 {_gap_warning_html(hour_gaps(hourly), _fallback_degraded(duckdb_path))}
+{_fallback_warning_html(hourly)}
 <noscript><p>The charts need JavaScript; the tables carry the same numbers.</p></noscript>
 
 <h2>This week in the market</h2>
