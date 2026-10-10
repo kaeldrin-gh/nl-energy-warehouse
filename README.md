@@ -252,6 +252,7 @@ The pre-commit hooks do the same checks as the lint job. To install them, run
 | One hour looks wrong | `raw.ingest_log`, pipeline health in `exports/report.html` | INC-004, INC-007 |
 | Source freshness fails | `dbt source freshness` output | INC-006 (KNMI offline) |
 | The report shows "Missing data" | The warning on the report and on the run summary | energy-charts was not available, so the hours that ENTSO-E did not publish yet stay empty. The marts use the hours that are available. The next successful load fills the gaps (INC-011) |
+| The report shows "Prices from the fallback source" | The warning on the report and on the run summary | ENTSO-E did not provide the prices for more than 5% of the last 14 days, so energy-charts priced those hours. These prices have no cross-check. The next successful ENTSO-E load replaces them |
 
 The guardrails stop data that is definitely incorrect: duplicate keys, prices
 outside the exchange limits, and sources that do not agree. Unusual values
