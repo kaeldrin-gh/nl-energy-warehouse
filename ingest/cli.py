@@ -205,6 +205,32 @@ def blocking_failures(failures: list[str], optional: list[str]) -> list[str]:
     return [source for source in failures if source not in optional]
 
 
+def check_due(duckdb_path: Path | None = None, now: datetime | None = None) -> list:
+    """Today's delivery hours (UTC) that the hourly mart does not contain.
+
+    Source freshness only checks when data was fetched. This check looks at
+    which hours arrived: a source that answers but stopped publishing passes
+    freshness, but fails here.
+    """
+    conn = db.connect(duckdb_path)
+    built = conn.execute(
+        "select 1 from information_schema.tables "
+        "where table_schema = 'main' and table_name = 'fct_hourly_price_weather'"
+    ).fetchone()
+    if not built:
+        conn.close()
+        print("check-due skipped: fct_hourly_price_weather not built (see the dbt build step)")
+        return []
+    hourly = conn.execute("select hour_utc from main.fct_hourly_price_weather").fetchdf()
+    conn.close()
+    missing = list(report.missing_due_hours(hourly, now))
+    if missing:
+        print(f"{len(missing)} of today's hours are missing: {missing[0]} .. {missing[-1]} UTC")
+    else:
+        print("all of today's hours are present")
+    return missing
+
+
 def export_marts(out_dir: Path | None = None, duckdb_path: Path | None = None) -> None:
     conn = db.connect(duckdb_path)
     out = out_dir or (settings.root / "exports")
@@ -404,6 +430,9 @@ def main() -> None:
     )
 
     sub.add_parser("export", help="export mart tables to exports/ as Parquet for BI tools")
+    sub.add_parser(
+        "check-due", help="fail when an hour of today (Europe/Amsterdam) is missing from the marts"
+    )
     sub.add_parser("report", help="generate exports/report.html from the marts")
     sub.add_parser(
         "refresh",
@@ -453,6 +482,9 @@ def main() -> None:
             sys.exit(1)
     elif args.command == "export":
         export_marts()
+    elif args.command == "check-due":
+        if check_due():
+            sys.exit(1)
     elif args.command == "report":
         missing = report.missing_marts()
         if missing:

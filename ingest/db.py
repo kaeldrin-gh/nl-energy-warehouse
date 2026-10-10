@@ -89,6 +89,14 @@ def log_run(conn: duckdb.DuckDBPyConnection, source: str, window_start, window_e
     )
 
 
+def is_live(conn: duckdb.DuckDBPyConnection) -> bool:
+    """True when a live price source loaded into this warehouse (not sample data)."""
+    row = conn.execute(
+        "SELECT count(*) FROM raw.ingest_log WHERE source IN ('entsoe', 'energycharts')"
+    ).fetchone()
+    return row[0] > 0
+
+
 def fallback_degraded(conn: duckdb.DuckDBPyConnection) -> bool:
     """True when energy-charts did not load after the latest ENTSO-E load.
 

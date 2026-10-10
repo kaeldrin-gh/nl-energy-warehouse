@@ -52,6 +52,14 @@ jobs:
         env:
           DUCKDB_PATH: warehouse/energy.duckdb
 
+      # Freshness checks when data was fetched; this checks which hours arrived.
+      # Today's prices are published the day before, so all of today is due.
+      - name: Check that today's prices arrived
+        if: always() && env.ENTSOE_TOKEN != ''
+        run: python -m ingest.cli check-due
+        env:
+          DUCKDB_PATH: warehouse/energy.duckdb
+
       - name: dbt source freshness (live sources)
         if: always() && env.ENTSOE_TOKEN != ''
         run: dbt source freshness --select source:raw.entsoe_prices source:raw.energycharts_prices source:raw.openmeteo_weather --project-dir dbt --profiles-dir dbt
