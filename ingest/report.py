@@ -1,5 +1,7 @@
 import json
+from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -103,6 +105,57 @@ def _fallback_warning_html(hourly: pd.DataFrame) -> str:
         '<div class="data-warning" role="note">'
         f"<p><strong>Prices from the fallback source.</strong> {_fallback_text(fallback, total)} "
         "The next successful ENTSO-E load replaces them.</p></div>"
+    )
+
+
+LOCAL_TZ = ZoneInfo("Europe/Amsterdam")
+
+
+def due_hours(now: datetime | None = None) -> pd.DatetimeIndex:
+    """All delivery hours (naive UTC) of today's local date in Europe/Amsterdam.
+
+    Day-ahead prices for a day are published on the day before (about 12:45
+    CET), so at any time of a day all of its hours are due: 23, 24 or 25 of
+    them, depending on DST.
+    """
+    now = now or datetime.now(timezone.utc)
+    today = now.astimezone(LOCAL_TZ).date()
+    start = pd.Timestamp(today, tz=LOCAL_TZ)
+    end = start + pd.DateOffset(days=1)
+    hours = pd.date_range(start, end, freq="h", inclusive="left")
+    return hours.tz_convert("UTC").tz_localize(None)
+
+
+def missing_due_hours(hourly: pd.DataFrame, now: datetime | None = None) -> pd.DatetimeIndex:
+    """The due hours of today that the hourly mart does not contain."""
+    have = set(pd.to_datetime(hourly["hour_utc"]))
+    return pd.DatetimeIndex([h for h in due_hours(now) if h not in have])
+
+
+def _due_text(missing: pd.DatetimeIndex, now: datetime | None = None) -> str:
+    due = due_hours(now)
+    local_day = due[0].tz_localize("UTC").tz_convert(LOCAL_TZ).strftime("%d %b %Y")
+    return (
+        f"{len(missing)} of {len(due)} hours of today ({local_day}, Europe/Amsterdam) are "
+        "missing. These prices were due since the day before. The latest load did not get "
+        "them from ENTSO-E or energy-charts.info."
+    )
+
+
+def _live(duckdb_path: Path | None) -> bool:
+    conn = db.connect(duckdb_path)
+    live = db.is_live(conn)
+    conn.close()
+    return live
+
+
+def _due_warning_html(hourly: pd.DataFrame, live: bool) -> str:
+    missing = missing_due_hours(hourly)
+    if not live or missing.empty:
+        return ""
+    return (
+        '<div class="data-warning" role="note">'
+        f"<p><strong>Prices for today are missing.</strong> {_due_text(missing)}</p></div>"
     )
 
 
@@ -305,6 +358,7 @@ def summary_markdown(duckdb_path: Path | None = None) -> str:
     ).fetchdf()
     news = _news_stats(conn)
     degraded = db.fallback_degraded(conn)
+    live = db.is_live(conn)
     conn.close()
 
     latest = hourly["hour_utc"].max()
@@ -328,6 +382,9 @@ def summary_markdown(duckdb_path: Path | None = None) -> str:
             f"{'; '.join(_gap_ranges(gaps))}. {_gap_cause(degraded)}",
             "",
         ]
+    missing_today = missing_due_hours(hourly)
+    if live and not missing_today.empty:
+        lines += [f"> **Warning: prices for today are missing.** {_due_text(missing_today)}", ""]
     fallback_hours, recent_hours = fallback_share(hourly)
     if recent_hours and fallback_hours / recent_hours > FALLBACK_WARN_SHARE:
         lines += [
@@ -632,6 +689,7 @@ def generate(out_path: Path | None = None, duckdb_path: Path | None = None) -> P
 {len(hourly):,} delivery hours</p>
 {_gap_warning_html(hour_gaps(hourly), _fallback_degraded(duckdb_path))}
 {_fallback_warning_html(hourly)}
+{_due_warning_html(hourly, _live(duckdb_path))}
 <noscript><p>The charts need JavaScript; the tables carry the same numbers.</p></noscript>
 
 <h2>This week in the market</h2>
