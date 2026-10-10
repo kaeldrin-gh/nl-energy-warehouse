@@ -237,6 +237,8 @@ Three workflows in `.github/workflows/`:
     more time (INC-010).
   - If the `ENTSOE_TOKEN` secret is not set, it stops without an error. Thus,
     forks stay green.
+  - It checks that all hours of today arrived (`python -m ingest.cli check-due`).
+    Source freshness only checks when the data was fetched.
   - If a run fails, it opens a GitHub issue.
 
 The pre-commit hooks do the same checks as the lint job. To install them, run
@@ -253,6 +255,7 @@ The pre-commit hooks do the same checks as the lint job. To install them, run
 | Source freshness fails | `dbt source freshness` output | INC-006 (KNMI offline) |
 | The report shows "Missing data" | The warning on the report and on the run summary | energy-charts was not available, so the hours that ENTSO-E did not publish yet stay empty. The marts use the hours that are available. The next successful load fills the gaps (INC-011) |
 | The report shows "Prices from the fallback source" | The warning on the report and on the run summary | ENTSO-E did not provide the prices for more than 5% of the last 14 days, so energy-charts priced those hours. These prices have no cross-check. The next successful ENTSO-E load replaces them |
+| `Check that today's prices arrived` fails, or the report shows "Prices for today are missing" | The step output and the warning | No source delivered all hours of today (Europe/Amsterdam). These prices are published on the day before, so they are always due. Check the ENTSO-E Transparency Platform for a delayed publication |
 
 The guardrails stop data that is definitely incorrect: duplicate keys, prices
 outside the exchange limits, and sources that do not agree. Unusual values
