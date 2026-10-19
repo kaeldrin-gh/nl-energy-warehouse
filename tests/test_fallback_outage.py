@@ -148,6 +148,21 @@ def test_a_failed_primary_source_still_fails_the_load():
     assert cli.blocking_failures(["entsoe", "energycharts"], ["energycharts"]) == ["entsoe"]
 
 
+def test_a_successful_backfill_returns_no_failures(monkeypatch):
+    # The CLI checks the result with blocking_failures; a backfill used to return
+    # None, which crashed that check and failed every live docs build's backfill.
+    class Conn:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(cli.db, "connect", lambda *args, **kwargs: Conn())
+    monkeypatch.setattr(cli, "_load_energycharts_window", lambda *args: None)
+    monkeypatch.setattr(cli.time, "sleep", lambda seconds: None)
+    failures = cli.load_live(["energycharts"], datetime(2026, 1, 1), datetime(2026, 1, 2))
+    assert failures == []
+    assert cli.blocking_failures(failures, []) == []
+
+
 def test_without_optional_sources_every_failure_fails_the_load():
     # The ingest workflow passes no --optional-sources: its run stays red.
     assert cli.blocking_failures(["energycharts"], []) == ["energycharts"]

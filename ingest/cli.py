@@ -138,7 +138,9 @@ def load_live(
         if "knmi" in sources:
             _load_knmi(conn, backfill_start, end)
         conn.close()
-        return
+        # A backfill raises on the first failed source, so reaching here means
+        # every source loaded.
+        return failures
 
     if "entsoe" in sources:
         if not settings.entsoe_token:
