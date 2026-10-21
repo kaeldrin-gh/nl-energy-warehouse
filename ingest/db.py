@@ -76,10 +76,13 @@ def upsert(conn: duckdb.DuckDBPyConnection, table: str, df) -> int:
     if df.empty:
         return 0
     conn.register("upsert_df", df)
-    conn.execute(f"INSERT OR REPLACE INTO raw.{table} SELECT * FROM upsert_df")
-    n = conn.execute("SELECT count(*) FROM upsert_df").fetchone()[0]
-    conn.unregister("upsert_df")
-    return n
+    try:
+        # Read the result to the end: DuckDB 2 refuses other work on a connection
+        # while a result is still open (it broke the scheduled runs on 21 Oct 2026).
+        conn.execute(f"INSERT OR REPLACE INTO raw.{table} SELECT * FROM upsert_df").fetchall()
+    finally:
+        conn.unregister("upsert_df")
+    return len(df)
 
 
 def log_run(conn: duckdb.DuckDBPyConnection, source: str, window_start, window_end, rows: int):

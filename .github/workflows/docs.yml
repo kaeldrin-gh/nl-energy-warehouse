@@ -37,8 +37,10 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      # Pinned by requirements-lock.txt, so a new DuckDB or dbt release can't
+      # change a run unannounced (DuckDB 2.0 did on 21 Oct 2026).
       - name: Install dependencies
-        run: pip install -e ".[dbt,test]"
+        run: pip install -c requirements-lock.txt -e ".[dbt,test]"
 
       # Scheduled/manual live builds feed the report from the real market.
       # Pushes and forks without the token use the deterministic sample, so the

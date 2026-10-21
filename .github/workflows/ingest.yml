@@ -25,8 +25,10 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      # Pinned by requirements-lock.txt, so a new DuckDB or dbt release can't
+      # change a run unannounced (DuckDB 2.0 did on 21 Oct 2026).
       - name: Install dependencies
-        run: pip install -e ".[dbt,test]"
+        run: pip install -c requirements-lock.txt -e ".[dbt,test]"
 
       - name: Skip gracefully without ENTSOE_TOKEN
         if: env.ENTSOE_TOKEN == ''
